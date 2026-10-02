@@ -1,6 +1,19 @@
 import { createClient } from '@supabase/supabase-js';
 
-const SUPABASE_URL = 'https://mqmibsjedlkdwlgftdei.supabase.co'.trim();
-const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1xbWlic2plZGxrZHdsZ2Z0ZGVpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjQ2MDM3MzUsImV4cCI6MjA4MDE3OTczNX0.UVQAVjdqyT-3p10KzTe-O8JRWoSafZNgd7eV4uM-0E8'.trim();
+const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
+const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
-export const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
+if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
+  // Fail loudly at startup rather than producing a broken shell at runtime.
+  throw new Error(
+    'Missing Supabase configuration. Set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY ' +
+    'in your .env.local (local) or in the host build environment (production).'
+  );
+}
+
+export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+// Base URL for Supabase Edge Functions (email, AI summary). Derived from the
+// project URL so there is a single source of truth.
+export const FUNCTIONS_URL = `${SUPABASE_URL.replace(/\/$/, '')}/functions/v1`;
+export const SUPABASE_ANON = SUPABASE_ANON_KEY;

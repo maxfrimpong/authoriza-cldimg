@@ -1,46 +1,42 @@
-
-import { GoogleGenAI } from "@google/genai";
 import { PaymentRequest } from "../types";
+import { FUNCTIONS_URL, SUPABASE_ANON } from "./supabaseClient";
 
+/**
+ * Summarise a payment request for an approver.
+ *
+ * The Gemini API key lives ONLY in the `summarize` Supabase Edge Function
+ * (server-side). It is never bundled into the client. This call sends the
+ * request payload to that function and returns the generated summary.
+ */
 export const summarizeRequest = async (request: PaymentRequest): Promise<string> => {
-  // Obtain API key exclusively from environment variable process.env.API_KEY.
-  const apiKey = process.env.API_KEY;
-  if (!apiKey) {
-    console.error("API_KEY environment variable is missing.");
-    return "Gemini service requires an API key.";
-  }
-
-  // Use named parameter when initializing the SDK client.
-  const ai = new GoogleGenAI({ apiKey });
-
-  const prompt = `
-    You are an expert executive assistant helping an Executive Director prioritize payment reviews.
-    Please summarize this payment request into 2-3 professional and objective sentences. 
-    Clearly highlight the vendor, the exact amount, the project being billed, and the core purpose.
-    
-    Data Context:
-    - Subject Header: ${request.requestSubject}
-    - Linked Project: ${request.billingProject}
-    - Vendor Entity: ${request.vendorName}
-    - Financial Value: ${request.currency} ${request.amount.toLocaleString()}
-    - Originating Dept: ${request.department}
-    - Requester Notes: ${request.description}
-    - Submitted By: ${request.requesterName}
-  `;
-
   try {
-    // Basic Text Tasks: Use 'gemini-3-flash-preview' for best efficiency.
-    const response = await ai.models.generateContent({
-      model: 'gemini-3-flash-preview',
-      contents: prompt,
+    const res = await fetch(`${FUNCTIONS_URL}/summarize`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${SUPABASE_ANON}`,
+      },
+      body: JSON.stringify({
+        requestSubject: request.requestSubject,
+        billingProject: request.billingProject,
+        vendorName: request.vendorName,
+        currency: request.currency,
+        amount: request.amount,
+        department: request.department,
+        description: request.description,
+        requesterName: request.requesterName,
+      }),
     });
-    
-    // Access the .text property directly as per modern GenerateContentResponse interface.
-    return response.text || "Summary generation returned empty content.";
-  } catch (error: any) {
+
+    if (!res.ok) {
+      if (res.status === 429) return "AI rate limit reached. Please review manually for now.";
+      return "The AI assistant is temporarily unavailable. The full breakdown is in the request form.";
+    }
+
+    const data = await res.json();
+    return data.summary || "Summary generation returned empty content.";
+  } catch (error) {
     console.error("Gemini summarization failed:", error);
-    // Graceful error handling for API failures.
-    if (error.status === 429) return "AI rate limit reached. Please try manually reviewing for now.";
-    return "The AI assistant is temporarily unavailable. Detailed breakdown is provided in the request form.";
+    return "The AI assistant is temporarily unavailable. The full breakdown is in the request form.";
   }
 };

@@ -6,7 +6,7 @@ import {
     SystemLists,
     Notification
 } from '../types';
-import { supabase } from './supabaseClient';
+import { supabase, FUNCTIONS_URL, SUPABASE_ANON } from './supabaseClient';
 import { MOCK_USERS, MOCK_REQUESTS, MOCK_MESSAGES, MOCK_SYSTEM_LISTS } from '../context/MockData';
 
 // Helper to safely parse JSON or return default
@@ -225,9 +225,12 @@ export const apiResetAllRequests = async (): Promise<boolean> => {
 
 export const apiSendEmail = async (to: string, subject: string, html: string) => {
     try {
-        await fetch('/api/notify', {
+        await fetch(`${FUNCTIONS_URL}/notify`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${SUPABASE_ANON}`,
+            },
             body: JSON.stringify({ to, subject, html })
         });
     } catch (e) {
