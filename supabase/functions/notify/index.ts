@@ -1,12 +1,14 @@
 // Supabase Edge Function: notify
-// Sends transactional email via SendGrid. The SendGrid API key and verified
-// sender live ONLY in the function's secrets, never in the client bundle.
+// Sends transactional email via Resend. The Resend API key and verified sender
+// live ONLY in the function's secrets, never in the client bundle.
 //
 // Deploy:
 //   supabase functions deploy notify
 // Set secrets:
-//   supabase secrets set SENDGRID_API_KEY=SG.xxxx
-//   supabase secrets set SENDGRID_FROM=media@yotaweb.org   (must be a verified sender)
+//   supabase secrets set RESEND_API_KEY=re_xxxxx
+//   supabase secrets set RESEND_FROM="SendREQ <notifications@yourdomain>"   (verified domain in Resend)
+//
+// Request body: { to: string, subject: string, html?: string, text?: string }
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -14,58 +16,53 @@ const CORS = {
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
 };
 
+const json = (status: number, body: unknown) =>
+  new Response(JSON.stringify(body), {
+    status,
+    headers: { ...CORS, 'Content-Type': 'application/json' },
+  });
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: CORS });
-  if (req.method !== 'POST') {
-    return new Response('Method Not Allowed', { status: 405, headers: CORS });
-  }
+  if (req.method !== 'POST') return new Response('Method Not Allowed', { status: 405, headers: CORS });
 
-  const apiKey = Deno.env.get('SENDGRID_API_KEY');
-  const from = Deno.env.get('SENDGRID_FROM') ?? 'media@yotaweb.org';
-  if (!apiKey) {
-    return new Response(JSON.stringify({ error: 'SENDGRID_API_KEY not configured' }), {
-      status: 500, headers: { ...CORS, 'Content-Type': 'application/json' },
-    });
+  const apiKey = Deno.env.get('RESEND_API_KEY');
+  const from = Deno.env.get('RESEND_FROM');
+  if (!apiKey || !from) {
+    return json(500, { error: 'RESEND_API_KEY / RESEND_FROM not configured' });
   }
 
   let body: { to?: string; subject?: string; html?: string; text?: string };
   try {
     body = await req.json();
   } catch {
-    return new Response(JSON.stringify({ error: 'Invalid JSON' }), {
-      status: 400, headers: { ...CORS, 'Content-Type': 'application/json' },
-    });
+    return json(400, { error: 'Invalid JSON' });
   }
 
   const { to, subject, html, text } = body;
   if (!to || !subject || (!html && !text)) {
-    return new Response(JSON.stringify({ error: 'Missing required fields (to, subject, content)' }), {
-      status: 400, headers: { ...CORS, 'Content-Type': 'application/json' },
-    });
+    return json(400, { error: 'Missing required fields (to, subject, content)' });
   }
 
-  const sgRes = await fetch('https://api.sendgrid.com/v3/mail/send', {
+  const resendRes = await fetch('https://api.resend.com/emails', {
     method: 'POST',
     headers: {
       'Authorization': `Bearer ${apiKey}`,
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({
-      personalizations: [{ to: [{ email: to }] }],
-      from: { email: from },
+      from,
+      to: [to],
       subject,
-      content: [{ type: html ? 'text/html' : 'text/plain', value: html || text }],
+      ...(html ? { html } : { text }),
     }),
   });
 
-  if (!sgRes.ok) {
-    const details = await sgRes.text();
-    return new Response(JSON.stringify({ error: 'Failed to send email', details }), {
-      status: 502, headers: { ...CORS, 'Content-Type': 'application/json' },
-    });
+  if (!resendRes.ok) {
+    const details = await resendRes.text();
+    return json(502, { error: 'Failed to send email', details });
   }
 
-  return new Response(JSON.stringify({ message: 'Email sent' }), {
-    status: 200, headers: { ...CORS, 'Content-Type': 'application/json' },
-  });
+  const data = await resendRes.json();
+  return json(200, { message: 'Email sent', id: data?.id });
 });

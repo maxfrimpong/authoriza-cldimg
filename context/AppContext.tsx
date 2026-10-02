@@ -24,9 +24,16 @@ import {
     apiResetAllRequests
 } from '../services/api';
 import { supabase } from '../services/supabaseClient';
+import { buildStageEmail } from '../services/emailTemplates';
 import toast from 'react-hot-toast';
 
 const AppContext = createContext<AuthContextType | undefined>(undefined);
+
+// Public URL used for the "Open SendREQ" buttons in emails. Falls back to the
+// running origin (hash router) so links work without extra configuration.
+const APP_URL: string =
+  import.meta.env.VITE_APP_URL ||
+  (typeof window !== 'undefined' ? `${window.location.origin}/#/` : '');
 
 const DEFAULT_COPYRIGHT = `&copy; ${new Date().getFullYear()} SendREQ. Custom developed for <span class="font-semibold">YOTA - Youth Opportunity and Transformation in Africa</span>.`;
 
@@ -407,10 +414,13 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
     try {
         await apiCreateRequest(newRequest);
         if (status !== RequestStatus.DRAFT && reqData.supervisorId) {
-            const supervisorEmail = getUserEmail(reqData.supervisorId);
+            const supervisor = users.find(u => u.id === reqData.supervisorId);
             const msg = `New payment request of ${newRequest.currency} ${newRequest.amount.toLocaleString()} for ${newRequest.vendorName} by ${reqData.requesterName} requires your confirmation.`;
             await createNotification(reqData.supervisorId, msg, 'info', { requestId: newRequest.id });
-            if (supervisorEmail) apiSendEmail(supervisorEmail, "New Request Pending Confirmation", msg);
+            if (supervisor?.email) {
+                const tpl = buildStageEmail({ status: RequestStatus.PENDING_SUPERVISOR, audience: 'actor', recipientName: supervisor.name, request: newRequest, appUrl: APP_URL });
+                if (tpl) apiSendEmail(supervisor.email, tpl.subject, tpl.html);
+            }
         } else if (status === RequestStatus.DRAFT) {
             toast.success("Request saved as Draft.");
         }
@@ -469,25 +479,39 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
     try {
         await apiUpdateRequest(id, updates);
         
-        // Notification for Requester
-        const requesterEmail = getUserEmail(targetRequest.requesterId);
+        const updatedRequest = { ...targetRequest, ...updates } as PaymentRequest;
+
+        // In-app notification + templated email for the requester
+        const requester = users.find(u => u.id === targetRequest.requesterId);
         let requesterMsg = `Your request of ${targetRequest.currency} ${targetRequest.amount.toLocaleString()} for ${targetRequest.vendorName} status changed to: ${status}`;
         if (remarks && (status.includes('Rejected') || status === RequestStatus.FROZEN)) {
             requesterMsg += `. Reason: ${remarks}`;
         }
         await createNotification(targetRequest.requesterId, requesterMsg, status === RequestStatus.APPROVED ? 'success' : (status.includes('Rejected') ? 'error' : 'info'), { requestId: id });
-        if (requesterEmail) apiSendEmail(requesterEmail, `Status Update: ${status}`, requesterMsg);
+        if (requester?.email) {
+            const tpl = buildStageEmail({ status, audience: 'requester', recipientName: requester.name, request: updatedRequest, appUrl: APP_URL, reason: remarks });
+            if (tpl) apiSendEmail(requester.email, tpl.subject, tpl.html);
+        }
 
-        // Notification for next in line
+        // In-app notification + templated email for the next actor in line
         if (status === RequestStatus.PENDING_AUTHORIZATION && targetRequest.authorizerId) {
+            const authorizer = users.find(u => u.id === targetRequest.authorizerId);
             const msg = `New authorized payment of ${targetRequest.currency} ${targetRequest.amount.toLocaleString()} for ${targetRequest.vendorName} requires your authorization.`;
             await createNotification(targetRequest.authorizerId, msg, 'info', { requestId: id });
+            if (authorizer?.email) {
+                const tpl = buildStageEmail({ status, audience: 'actor', recipientName: authorizer.name, request: updatedRequest, appUrl: APP_URL });
+                if (tpl) apiSendEmail(authorizer.email, tpl.subject, tpl.html);
+            }
         } else if (status === RequestStatus.AUTHORIZED) {
             // Notify all Approvers (EDs)
             const eds = users.filter(u => u.roles.includes(Role.APPROVER));
             const msg = `Authorized payment of ${targetRequest.currency} ${targetRequest.amount.toLocaleString()} for ${targetRequest.vendorName} is pending your final approval.`;
             for (const ed of eds) {
                 await createNotification(ed.id, msg, 'info', { requestId: id });
+                if (ed.email) {
+                    const tpl = buildStageEmail({ status, audience: 'actor', recipientName: ed.name, request: updatedRequest, appUrl: APP_URL });
+                    if (tpl) apiSendEmail(ed.email, tpl.subject, tpl.html);
+                }
             }
         }
 

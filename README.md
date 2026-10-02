@@ -12,8 +12,10 @@ admin console for users and system lists.
 - **Frontend:** React 18 + TypeScript + Vite + Tailwind, React Router (hash),
   Recharts, `react-hot-toast`.
 - **Backend:** Supabase (Postgres + Realtime + Auth) accessed from the client.
-- **Serverless:** two Supabase Edge Functions — `notify` (email via SendGrid)
+- **Serverless:** two Supabase Edge Functions — `notify` (email via Resend)
   and `summarize` (AI request summary via Gemini). API keys stay server-side.
+- **Email templates:** `services/emailTemplates.ts` renders a branded email per
+  approval stage; sent to the next actor and to the requester as a request moves.
 
 ## Roles
 
@@ -46,10 +48,13 @@ Client (`.env.local`, exposed to the browser):
 Server (Supabase Function secrets — **never** in client env):
 
 ```bash
-supabase secrets set SENDGRID_API_KEY=SG.xxxx
-supabase secrets set SENDGRID_FROM=media@yotaweb.org   # verified sender
+supabase secrets set RESEND_API_KEY=re_xxxxx
+supabase secrets set RESEND_FROM="SendREQ <notifications@yourdomain>"  # verified domain in Resend
 supabase secrets set GEMINI_API_KEY=xxxx
 ```
+
+Email requires a domain verified in Resend (add the DNS records Resend gives
+you). `RESEND_FROM` must use that domain.
 
 ## Database
 
