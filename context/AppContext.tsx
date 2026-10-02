@@ -521,7 +521,7 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
             const supervisor = users.find(u => u.id === targetRequest.supervisorId);
             if (supervisor?.email) extraRecipients.set(supervisor.email, supervisor.name);
             users
-                .filter(u => u.department === 'Finance' || (u.position || '').toLowerCase().includes('finance'))
+                .filter(u => (u.position || '').toLowerCase() === 'finance manager')
                 .forEach(u => { if (u.email) extraRecipients.set(u.email, u.name); });
             // The requester already received their personal approval email.
             if (requester?.email) extraRecipients.delete(requester.email);
