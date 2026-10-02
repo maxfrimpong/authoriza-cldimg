@@ -1,0 +1,13 @@
+
+{
+  "name": "sendreq-api",
+  "version": "1.0.0",
+  "description": "Azure Functions for SendREQ",
+  "scripts": {
+    "start": "func start"
+  },
+  "dependencies": {
+    "pg": "^8.11.3",
+    "@sendgrid/mail": "^8.1.1"
+  }
+}

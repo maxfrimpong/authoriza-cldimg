@@ -1,0 +1,467 @@
+import React, { useState, useEffect, useRef } from 'react';
+import { useApp } from '../context/AppContext';
+import { RequestStatus, PaymentRequest, RequestFile } from '../types';
+import { CheckCircle, XCircle, Eye, FileText, Download, X, Printer, PenTool } from 'lucide-react';
+import { useSearchParams } from 'react-router-dom';
+import { printPaymentRequest } from '../utils/pdfGenerator';
+
+export const SupervisorDashboard = () => {
+  const { user, requests, updateRequestStatus, users, logoUrl } = useApp();
+  const [selectedRequest, setSelectedRequest] = useState<PaymentRequest | null>(null);
+  const [action, setAction] = useState<'CONFIRM' | 'REJECT' | null>(null);
+  const [remarks, setRemarks] = useState('');
+  const [signature, setSignature] = useState<string>('');
+  const [previewFile, setPreviewFile] = useState<RequestFile | null>(null);
+  const [searchParams, setSearchParams] = useSearchParams();
+  const signatureInputRef = useRef<HTMLInputElement>(null);
+
+  // Handle URL Request ID
+  useEffect(() => {
+      const requestId = searchParams.get('requestId');
+      if (requestId && requests.length > 0) {
+          const req = requests.find(r => r.id === requestId);
+          if (req) setSelectedRequest(req);
+      }
+  }, [searchParams, requests]);
+
+  const pendingRequests = requests.filter(r => 
+    r.supervisorId === user?.id && r.status === RequestStatus.PENDING_SUPERVISOR
+  );
+  
+  const historyRequests = requests.filter(r => 
+    r.supervisorId === user?.id && r.status !== RequestStatus.PENDING_SUPERVISOR
+  );
+
+  const convertFileToBase64 = (file: File): Promise<string> => {
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.readAsDataURL(file);
+        reader.onload = () => resolve(reader.result as string);
+        reader.onerror = error => reject(error);
+    });
+  };
+
+  const handleSignatureUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+      if (e.target.files && e.target.files[0]) {
+          const file = e.target.files[0];
+          if (file.type !== 'image/png') {
+              alert('Please upload a PNG file for the signature.');
+              return;
+          }
+          try {
+              const base64Url = await convertFileToBase64(file);
+              setSignature(base64Url);
+          } catch (error) {
+              console.error("Error converting signature:", error);
+              alert("Failed to process signature. Please try again.");
+          }
+      }
+  };
+
+  const handleAction = () => {
+    if (!selectedRequest || !action) return;
+    
+    if (action === 'CONFIRM' && !signature) {
+        alert("Please upload your signature before confirming.");
+        return;
+    }
+    
+    let status: RequestStatus;
+    switch(action) {
+      case 'CONFIRM': status = RequestStatus.PENDING_AUTHORIZATION; break;
+      case 'REJECT': status = RequestStatus.REJECTED_BY_SUPERVISOR; break;
+      default: return;
+    }
+
+    // Pass signature only if confirming
+    updateRequestStatus(selectedRequest.id, status, remarks, action === 'CONFIRM' ? signature : undefined);
+    setSelectedRequest(null);
+    setAction(null);
+    setRemarks('');
+    setSignature('');
+  };
+
+  const handleDownload = (file: RequestFile) => {
+    const a = document.createElement('a');
+    a.href = file.url;
+    a.download = file.name;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+  };
+
+  const handlePrintPdf = () => {
+      if (!selectedRequest) return;
+      printPaymentRequest(selectedRequest, users, logoUrl);
+  };
+
+  const closeDetails = () => {
+    setSelectedRequest(null);
+    setSearchParams(params => {
+        params.delete('requestId');
+        return params;
+    });
+  };
+
+  return (
+    <div className="space-y-8">
+      <div>
+        <h2 className="text-2xl font-bold text-gray-900">Supervisor Dashboard</h2>
+        <p className="text-gray-500 text-sm">Review pending requests from your team</p>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <div className="bg-white rounded-lg shadow h-fit">
+          <div className="px-6 py-4 border-b border-gray-100 flex justify-between items-center">
+            <h3 className="font-semibold text-gray-800">Pending Confirmation ({pendingRequests.length})</h3>
+          </div>
+          <div className="divide-y divide-gray-100 max-h-[600px] overflow-y-auto">
+            {pendingRequests.length === 0 ? (
+                <div className="p-6 text-center text-gray-400">All caught up! No pending requests.</div>
+            ) : (
+                pendingRequests.map(req => (
+                    <div key={req.id} className="p-4 hover:bg-gray-50 transition-colors flex justify-between items-start">
+                        <div>
+                            <p className="font-bold text-gray-900">{req.requestSubject}</p>
+                            <p className="text-sm text-gray-600">{req.vendorName} - {req.currency} {req.amount.toLocaleString()}</p>
+                            <p className="text-xs text-gray-400 mt-1">From: {req.requesterName} ({req.department})</p>
+                        </div>
+                        <button 
+                            onClick={() => setSelectedRequest(req)}
+                            className="bg-brand-teal/10 text-brand-teal px-3 py-1.5 rounded text-sm font-medium hover:bg-brand-teal/20"
+                        >
+                            Review
+                        </button>
+                    </div>
+                ))
+            )}
+          </div>
+        </div>
+
+        <div className="bg-white rounded-lg shadow">
+           {!selectedRequest ? (
+               <div className="h-64 flex flex-col items-center justify-center text-gray-400 p-6">
+                   <Eye size={48} className="mb-4 opacity-20"/>
+                   <p>Select a request from the queue to review details.</p>
+               </div>
+           ) : (
+               <div className="p-6">
+                    {/* ... Existing details view logic ... */}
+                    <div className="flex justify-between items-start mb-6">
+                        <div>
+                           <h3 className="text-xl font-bold text-gray-900">{selectedRequest.requestSubject}</h3>
+                           <p className="text-sm text-gray-500">{selectedRequest.vendorName}</p>
+                           <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium mt-1 ${selectedRequest.status === RequestStatus.APPROVED ? 'bg-brand-teal/10 text-brand-teal' : 'bg-yellow-100 text-yellow-800'}`}>
+                                {selectedRequest.status}
+                           </span>
+                        </div>
+                        <div className="flex flex-col items-end">
+                             <span className="text-2xl font-bold text-brand-dark">{selectedRequest.currency} {selectedRequest.amount.toLocaleString()}</span>
+                             {selectedRequest.status === RequestStatus.APPROVED && (
+                                <button onClick={handlePrintPdf} className="mt-2 text-xs bg-brand-dark text-white px-2 py-1 rounded shadow hover:bg-[#004d61] flex items-center">
+                                    <Printer size={12} className="mr-1"/> Download PDF
+                                </button>
+                             )}
+                        </div>
+                    </div>
+
+                    <div className="space-y-4 mb-8">
+                        <div className="grid grid-cols-2 gap-4 text-sm">
+                            <div><span className="text-gray-500 block">Requester</span><span className="font-medium">{selectedRequest.requesterName}</span></div>
+                            <div><span className="text-gray-500 block">Department</span><span className="font-medium">{selectedRequest.department}</span></div>
+                            <div className="col-span-2"><span className="text-gray-500 block">Billing Project</span><span className="font-medium text-brand-teal">{selectedRequest.billingProject}</span></div>
+                            <div className="col-span-2">
+                                <span className="text-gray-500 block">Vendor</span>
+                                <span className="font-medium">{selectedRequest.vendorName}</span>
+                                {selectedRequest.vendorTin && <span className="text-gray-400 text-xs ml-2">(TIN: {selectedRequest.vendorTin})</span>}
+                            </div>
+                            <div className="col-span-2"><span className="text-gray-500 block">Payment Details</span><span className="font-medium font-mono bg-gray-50 px-2 py-1 rounded block mt-1">{selectedRequest.paymentDetails}</span></div>
+                        </div>
+
+                        <div>
+                            <span className="text-gray-500 block text-sm mb-1">Description</span>
+                            <p className="text-gray-700 text-sm bg-gray-50 p-3 rounded-lg border border-gray-100">{selectedRequest.description}</p>
+                        </div>
+                        
+                         {/* Billing Items Rendering */}
+                         {selectedRequest.billingItems && selectedRequest.billingItems.length > 0 && (
+                         <div>
+                             <label className="block text-sm text-gray-500 mb-2">Billing Items</label>
+                             <div className="border border-gray-200 rounded-lg overflow-hidden">
+                                 <table className="min-w-full divide-y divide-gray-200">
+                                     <thead className="bg-gray-50">
+                                         <tr>
+                                             <th className="px-2 py-1 text-left text-xs font-medium text-gray-500 uppercase">Item</th>
+                                             <th className="px-2 py-1 text-left text-xs font-medium text-gray-500 uppercase">Type</th>
+                                             <th className="px-2 py-1 text-right text-xs font-medium text-gray-500 uppercase">Unit Cost</th>
+                                             <th className="px-2 py-1 text-right text-xs font-medium text-gray-500 uppercase">Qty</th>
+                                             <th className="px-2 py-1 text-right text-xs font-medium text-gray-500 uppercase">Freq</th>
+                                             <th className="px-2 py-1 text-right text-xs font-medium text-gray-500 uppercase">Total</th>
+                                         </tr>
+                                     </thead>
+                                     <tbody className="divide-y divide-gray-200 bg-white">
+                                         {selectedRequest.billingItems.map((item, idx) => (
+                                             <tr key={idx}>
+                                                 <td className="px-2 py-1 text-xs text-gray-900">{item.description}</td>
+                                                 <td className="px-2 py-1 text-xs text-gray-500">{item.billingType || 'Normal'}</td>
+                                                 <td className="px-2 py-1 text-xs text-gray-500 text-right">{item.unitCost.toLocaleString()}</td>
+                                                 <td className="px-2 py-1 text-xs text-gray-500 text-right">{item.quantity}</td>
+                                                 <td className="px-2 py-1 text-xs text-gray-500 text-right">{item.frequency}</td>
+                                                 <td className="px-2 py-1 text-xs text-gray-900 text-right">{(item.unitCost * item.quantity * item.frequency).toLocaleString()}</td>
+                                             </tr>
+                                         ))}
+                                         {(() => {
+                                             const sService = selectedRequest.billingItems!.reduce((acc, i) => (i.billingType === 'Service') ? acc + (i.unitCost * i.quantity * i.frequency) : acc, 0);
+                                             const sGoods = selectedRequest.billingItems!.reduce((acc, i) => (i.billingType === 'Goods') ? acc + (i.unitCost * i.quantity * i.frequency) : acc, 0);
+                                             const sNormal = selectedRequest.billingItems!.reduce((acc, i) => (i.billingType === 'Normal' || !i.billingType) ? acc + (i.unitCost * i.quantity * i.frequency) : acc, 0);
+
+                                             // Percentages
+                                             const partPaymentP = selectedRequest.partPaymentPercentage || 100;
+                                             const partPaymentDec = partPaymentP / 100;
+                                             
+                                             const serviceTaxP = selectedRequest.withholdingTaxPercentage || 0;
+                                             const otherTaxP = selectedRequest.otherWithholdingTaxPercentage || 0;
+
+                                             // Part Payment Amounts
+                                             const pService = sService * partPaymentDec;
+                                             const pGoods = sGoods * partPaymentDec;
+                                             const pNormal = sNormal * partPaymentDec;
+
+                                             // Tax on Part Payments
+                                             const serviceTax = pService * (serviceTaxP / 100);
+                                             const otherTax = pGoods * (otherTaxP / 100);
+                                             
+                                             // Grand Total
+                                             const grandTotal = (pService - serviceTax) + (pGoods - otherTax) + pNormal;
+                                             
+                                             // Outstanding
+                                             const totalNetIfFull = (sService * (1 - serviceTaxP/100)) + (sGoods * (1 - otherTaxP/100)) + sNormal;
+                                             const outstanding = totalNetIfFull - grandTotal;
+                                             
+                                             // Remaining Tax
+                                             const remServiceTax = (sService - pService) * (serviceTaxP / 100);
+                                             const remOtherTax = (sGoods - pGoods) * (otherTaxP / 100);
+                                             const totalRemTax = remServiceTax + remOtherTax;
+                                             const grossTotal = sService + sGoods + sNormal;
+                                             
+                                             // Check if balance request
+                                             const isBal = selectedRequest.requestSubject.toLowerCase().includes('balance');
+
+                                             return (
+                                                <>
+                                                 {(sService > 0 || serviceTaxP > 0) && (
+                                                     <>
+                                                         <tr className="bg-blue-50/50">
+                                                             <td colSpan={6} className="px-3 py-1 text-right text-xs font-medium text-gray-700">Sub-Total for Services: {selectedRequest.currency} {sService.toLocaleString(undefined, {minimumFractionDigits: 2})}</td>
+                                                         </tr>
+                                                         <tr className="bg-blue-50/50">
+                                                             <td colSpan={6} className="px-3 py-1 text-right text-xs text-gray-600">Part Payment of Services ({partPaymentP}%): <span className="font-medium text-gray-900">{selectedRequest.currency} {pService.toLocaleString(undefined, {minimumFractionDigits: 2})}</span></td>
+                                                         </tr>
+                                                         <tr className="bg-blue-50/50">
+                                                             <td colSpan={6} className="px-3 py-1 text-right text-xs text-gray-500">Services WHT ({serviceTaxP}%): <span className="text-red-500">-{selectedRequest.currency} {serviceTax.toLocaleString(undefined, {minimumFractionDigits: 2})}</span></td>
+                                                         </tr>
+                                                     </>
+                                                 )}
+                                                 {(sGoods > 0 || otherTaxP > 0) && (
+                                                     <>
+                                                         <tr className="bg-orange-50/50">
+                                                             <td colSpan={6} className="px-3 py-1 text-right text-xs font-medium text-gray-700">Sub-Total for Goods: {selectedRequest.currency} {sGoods.toLocaleString(undefined, {minimumFractionDigits: 2})}</td>
+                                                         </tr>
+                                                         <tr className="bg-orange-50/50">
+                                                             <td colSpan={6} className="px-3 py-1 text-right text-xs text-gray-600">Part Payment of Goods ({partPaymentP}%): <span className="font-medium text-gray-900">{selectedRequest.currency} {pGoods.toLocaleString(undefined, {minimumFractionDigits: 2})}</span></td>
+                                                         </tr>
+                                                         <tr className="bg-orange-50/50">
+                                                             <td colSpan={6} className="px-3 py-1 text-right text-xs text-gray-500">Other WHT ({otherTaxP}%): <span className="text-red-500">-{selectedRequest.currency} {otherTax.toLocaleString(undefined, {minimumFractionDigits: 2})}</span></td>
+                                                         </tr>
+                                                     </>
+                                                 )}
+                                                 {sNormal > 0 && (
+                                                     <tr className="bg-gray-50">
+                                                         <td colSpan={6} className="px-3 py-1 text-right text-xs font-medium text-gray-700">
+                                                             Sub-Total for Normal: {selectedRequest.currency} {sNormal.toLocaleString(undefined, {minimumFractionDigits: 2})}
+                                                             <br/>
+                                                             <span className="text-gray-500 font-normal">Part Payment of Normal ({partPaymentP}%): {selectedRequest.currency} {pNormal.toLocaleString(undefined, {minimumFractionDigits: 2})}</span>
+                                                         </td>
+                                                     </tr>
+                                                 )}
+                                                 
+                                                 <tr className="bg-gray-100 border-t border-gray-200">
+                                                     <td colSpan={6} className="px-3 py-1 text-right text-xs font-bold text-gray-800">Gross Sub-Total</td>
+                                                     <td className="px-3 py-1 text-right text-xs font-bold text-gray-900">{selectedRequest.currency} {grossTotal.toLocaleString(undefined, {minimumFractionDigits: 2})}</td>
+                                                 </tr>
+                                                 
+                                                 <tr className="bg-gray-100">
+                                                     <td colSpan={6} className="px-3 py-1 text-right text-xs font-medium text-gray-700">Total Part Payment (%)</td>
+                                                     <td className="px-3 py-1 text-right text-xs text-gray-500">{partPaymentP}%</td>
+                                                 </tr>
+
+                                                 <tr className="bg-gray-200 font-bold border-t border-gray-300">
+                                                     <td colSpan={6} className="px-3 py-1 text-right text-xs text-gray-900">Grand Total Due</td>
+                                                     <td className="px-3 py-1 text-right text-xs text-brand-teal">{selectedRequest.currency} {grandTotal.toLocaleString(undefined, {minimumFractionDigits: 2})}</td>
+                                                 </tr>
+
+                                                 <tr className="bg-gray-50 border-t border-gray-200">
+                                                     <td colSpan={6} className="px-3 py-1 text-right text-xs font-medium text-gray-500">{isBal ? 'Initial Payment' : 'Outstanding Payment'}</td>
+                                                     <td className="px-3 py-1 text-right text-xs text-gray-500 font-bold">{selectedRequest.currency} {outstanding.toLocaleString(undefined, {minimumFractionDigits: 2})}</td>
+                                                 </tr>
+
+                                                 <tr className="bg-gray-50">
+                                                     <td colSpan={6} className="px-3 py-1 text-right text-xs font-medium text-gray-400">{isBal ? 'Initial WHT Paid' : 'Remaining WHT Amount'}</td>
+                                                     <td className="px-3 py-1 text-right text-xs text-gray-400">{selectedRequest.currency} {totalRemTax.toLocaleString(undefined, {minimumFractionDigits: 2})}</td>
+                                                 </tr>
+                                                </>
+                                             );
+                                         })()}
+                                     </tbody>
+                                 </table>
+                             </div>
+                         </div>
+                        )}
+
+                        <div>
+                            <span className="text-gray-500 block text-sm mb-2">Attachments</span>
+                            <div className="flex flex-wrap gap-2">
+                                {selectedRequest.files.map((f, i) => (
+                                    <button key={i} onClick={() => setPreviewFile(f)} className="flex items-center space-x-2 text-xs bg-brand-teal/5 text-brand-teal px-3 py-2 rounded-md border border-brand-teal/20 hover:bg-brand-teal/10 transition-colors">
+                                        <FileText size={14}/><span className="font-medium">{f.name}</span>
+                                    </button>
+                                ))}
+                                {selectedRequest.files.length === 0 && <span className="text-xs text-gray-400">No attachments</span>}
+                            </div>
+                        </div>
+                    </div>
+
+                    <div className="border-t pt-6">
+                        {selectedRequest.status === RequestStatus.PENDING_SUPERVISOR ? (
+                            !action ? (
+                                <div className="flex space-x-3">
+                                    <button onClick={() => setAction('CONFIRM')} className="flex-1 bg-brand-teal hover:bg-[#008f7a] text-white py-2 rounded-lg font-medium transition-colors flex justify-center items-center"><CheckCircle size={18} className="mr-2"/> Confirm Request</button>
+                                    <button onClick={() => setAction('REJECT')} className="flex-1 bg-brand-orange hover:bg-[#d63a10] text-white py-2 rounded-lg font-medium transition-colors flex justify-center items-center"><XCircle size={18} className="mr-2"/> Reject for Editing</button>
+                                </div>
+                            ) : (
+                                <div className="space-y-4 animate-in fade-in slide-in-from-bottom-2">
+                                    <h4 className="font-medium text-gray-900">{action === 'CONFIRM' ? 'Confirm to Authorizer' : 'Reject for Editing'}</h4>
+                                    
+                                    {/* Action Content */}
+                                    {action === 'REJECT' && <textarea className="w-full border border-gray-300 rounded-lg p-3 text-sm focus:ring-2 focus:ring-brand-teal focus:border-brand-teal" placeholder="Reason for rejection (sent to requester)..." rows={3} value={remarks} onChange={e => setRemarks(e.target.value)} />}
+                                    
+                                    {action === 'CONFIRM' && (
+                                        <div className="space-y-3">
+                                            <p className="text-sm text-gray-600">Please upload your signature to confirm this request.</p>
+                                            <div className="flex items-center gap-3">
+                                                <input 
+                                                    type="file" 
+                                                    className="hidden" 
+                                                    accept="image/png" 
+                                                    ref={signatureInputRef}
+                                                    onChange={handleSignatureUpload} 
+                                                />
+                                                <button 
+                                                    onClick={() => signatureInputRef.current?.click()}
+                                                    className="flex items-center space-x-2 px-3 py-2 border border-gray-300 rounded bg-white text-sm hover:bg-gray-50"
+                                                >
+                                                    <PenTool size={14} /> <span>Upload Signature (PNG)</span>
+                                                </button>
+                                                {signature && (
+                                                    <div className="border p-1 rounded bg-white">
+                                                        <img src={signature} alt="Sig" className="h-8 w-auto" />
+                                                    </div>
+                                                )}
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    <div className="flex space-x-3 pt-2">
+                                        <button onClick={() => { setAction(null); setRemarks(''); setSignature(''); }} className="flex-1 bg-gray-100 hover:bg-gray-200 text-gray-700 py-2 rounded-lg font-medium">Cancel</button>
+                                        <button 
+                                            onClick={handleAction} 
+                                            disabled={action === 'CONFIRM' && !signature}
+                                            className={`flex-1 text-white py-2 rounded-lg font-medium ${action === 'CONFIRM' ? 'bg-brand-teal hover:bg-[#008f7a] disabled:opacity-50' : 'bg-brand-orange hover:bg-[#d63a10]'}`}
+                                        >
+                                            Confirm
+                                        </button>
+                                    </div>
+                                </div>
+                            )
+                        ) : (
+                             <div className="text-center text-gray-500 text-sm bg-gray-50 py-3 rounded-lg">This request has already been processed.</div>
+                        )}
+                    </div>
+               </div>
+           )}
+        </div>
+      </div>
+      
+      {/* History Table ... */}
+      <div className="bg-white rounded-lg shadow overflow-hidden mt-8">
+        <div className="px-6 py-4 border-b border-gray-100"><h3 className="font-semibold text-gray-800">History</h3></div>
+        <table className="min-w-full divide-y divide-gray-200">
+            <thead className="bg-gray-50">
+                <tr>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Date</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Requester</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Subject</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Amount</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Action</th>
+                </tr>
+            </thead>
+            <tbody className="bg-white divide-y divide-gray-200">
+                {historyRequests.map(req => (
+                    <tr key={req.id}>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{new Date(req.updatedAt).toLocaleDateString()}</td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{req.requesterName}</td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{req.requestSubject}</td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{req.currency} {req.amount.toLocaleString()}</td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm">
+                            <span className={`px-2 py-1 rounded-full text-xs font-medium ${req.status === RequestStatus.APPROVED ? 'bg-brand-teal/10 text-brand-teal' : 'bg-brand-orange/10 text-brand-orange'}`}>{req.status}</span>
+                        </td>
+                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                            <button onClick={() => setSelectedRequest(req)} className="text-brand-dark hover:text-brand-teal flex items-center space-x-1"><Eye size={16} /><span>View</span></button>
+                        </td>
+                    </tr>
+                ))}
+            </tbody>
+        </table>
+      </div>
+
+      {previewFile && (
+        <div className="fixed inset-0 z-[60] overflow-hidden bg-black bg-opacity-75 flex items-center justify-center p-4 backdrop-blur-sm">
+          <div className="bg-white rounded-lg shadow-xl w-full max-w-4xl h-[85vh] flex flex-col animate-in zoom-in-95 duration-200">
+            <div className="flex justify-between items-center p-4 border-b">
+              <div className="flex items-center space-x-3">
+                <div className="bg-brand-teal/10 p-2 rounded"><FileText size={20} className="text-brand-teal"/></div>
+                <div><h3 className="font-bold text-gray-900">{previewFile.name}</h3><p className="text-xs text-gray-500 uppercase">{previewFile.type}</p></div>
+              </div>
+              <button onClick={() => setPreviewFile(null)} className="text-gray-400 hover:text-gray-600 transition-colors p-1 rounded-full hover:bg-gray-100"><X size={24} /></button>
+            </div>
+            
+            <div className="flex-1 bg-gray-100 overflow-hidden relative flex flex-col items-center justify-center p-4">
+              {previewFile.url && previewFile.url !== '#' ? (
+                  previewFile.name.toLowerCase().endsWith('.pdf') ? (
+                      <iframe src={previewFile.url} className="w-full h-full border-none shadow-lg bg-white rounded" title="Preview"></iframe>
+                  ) : (
+                      <div className="w-full h-full flex items-center justify-center overflow-auto">
+                          <img src={previewFile.url} alt="Preview" className="max-w-full max-h-full object-contain shadow-lg rounded" />
+                      </div>
+                  )
+              ) : (
+                  <div className="bg-white shadow-lg p-12 max-w-2xl w-full min-h-[300px] flex flex-col items-center text-center rounded">
+                       <FileText size={64} className="text-gray-300 mb-6" />
+                       <h2 className="text-2xl font-bold text-gray-800 mb-2">PREVIEW UNAVAILABLE</h2>
+                       <p className="text-gray-500 mb-8">This file cannot be previewed directly.</p>
+                  </div>
+              )}
+            </div>
+
+            <div className="p-4 border-t bg-gray-50 flex justify-end">
+                 <button onClick={() => handleDownload(previewFile)} className="flex items-center space-x-2 bg-brand-teal hover:bg-[#008f7a] text-white px-4 py-2 rounded-lg transition-colors shadow-sm">
+                    <Download size={18} /><span>Download File</span>
+                 </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
