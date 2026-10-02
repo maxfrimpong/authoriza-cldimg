@@ -1,5 +1,5 @@
 {
   "name": "SendREQ - Final - Cash Payment Requests App",
-  "description": "A streamlined cash payment request system with multi-level approval workflows, Gemini-powered summaries, and analytics.",
+  "description": "A streamlined cash payment request system with multi-level approval workflows and analytics.",
   "requestFramePermissions": []
 }

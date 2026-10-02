@@ -12,8 +12,8 @@ admin console for users and system lists.
 - **Frontend:** React 18 + TypeScript + Vite + Tailwind, React Router (hash),
   Recharts, `react-hot-toast`.
 - **Backend:** Supabase (Postgres + Realtime + Auth) accessed from the client.
-- **Serverless:** two Supabase Edge Functions — `notify` (email via Resend)
-  and `summarize` (AI request summary via Gemini). API keys stay server-side.
+- **Serverless:** one Supabase Edge Function — `notify` (email via Resend).
+  The API key stays server-side.
 - **Email templates:** `services/emailTemplates.ts` renders a branded email per
   approval stage; sent to the next actor and to the requester as a request moves.
 
@@ -50,7 +50,6 @@ Server (Supabase Function secrets — **never** in client env):
 ```bash
 supabase secrets set RESEND_API_KEY=re_xxxxx
 supabase secrets set RESEND_FROM="SendREQ <notifications@yourdomain>"  # verified domain in Resend
-supabase secrets set GEMINI_API_KEY=xxxx
 ```
 
 Email requires a domain verified in Resend (add the DNS records Resend gives
@@ -66,7 +65,6 @@ live project before applying** — see the header of that file.
 
 ```bash
 supabase functions deploy notify
-supabase functions deploy summarize
 ```
 
 ## Deploy (frontend)

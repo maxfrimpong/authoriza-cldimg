@@ -1,8 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useApp } from '../context/AppContext';
 import { RequestStatus, PaymentRequest, RequestFile } from '../types';
-import { summarizeRequest } from '../services/geminiService';
-import { CheckCircle, XCircle, Sparkles, Loader2, FileText, Download, X, Eye, Printer, PenTool, CreditCard, Info } from 'lucide-react';
+import { CheckCircle, XCircle, Sparkles, FileText, Download, X, Eye, Printer, PenTool, CreditCard, Info } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import { printPaymentRequest } from '../utils/pdfGenerator';
 import { useSearchParams } from 'react-router-dom';
@@ -10,8 +9,6 @@ import { useSearchParams } from 'react-router-dom';
 export const ApproverDashboard = () => {
   const { requests, updateRequestStatus, users, logoUrl } = useApp();
   const [selectedRequest, setSelectedRequest] = useState<PaymentRequest | null>(null);
-  const [geminiSummary, setGeminiSummary] = useState<string>('');
-  const [isSummarizing, setIsSummarizing] = useState(false);
   const [remarks, setRemarks] = useState('');
   const [action, setAction] = useState<'APPROVE' | 'REJECT' | null>(null);
   const [signature, setSignature] = useState<string>('');
@@ -40,14 +37,6 @@ export const ApproverDashboard = () => {
       statusDataMap[key] = (statusDataMap[key] || 0) + 1;
   });
   const statusData = Object.keys(statusDataMap).map(key => ({ name: key, count: statusDataMap[key] }));
-
-  useEffect(() => {
-    if (selectedRequest && selectedRequest.status === RequestStatus.AUTHORIZED) {
-      setGeminiSummary(''); 
-      setIsSummarizing(true);
-      summarizeRequest(selectedRequest).then(summary => setGeminiSummary(summary)).finally(() => setIsSummarizing(false));
-    }
-  }, [selectedRequest]);
 
   const handleSignatureUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
       if (e.target.files && e.target.files[0]) {
@@ -139,14 +128,6 @@ export const ApproverDashboard = () => {
                 </div>
             ) : (
                 <div className="flex-1 overflow-y-auto space-y-6 pr-2 custom-scrollbar">
-                    {selectedRequest.status === RequestStatus.AUTHORIZED && (
-                        <div className="bg-gradient-to-br from-brand-teal/10 to-brand-dark/10 p-5 rounded-2xl border border-brand-teal/20 relative overflow-hidden shadow-inner shrink-0">
-                            <div className="flex items-center space-x-2 text-brand-dark dark:text-brand-teal font-bold mb-2"><Sparkles size={18} /><span>Executive AI Insight</span></div>
-                            {isSummarizing ? <div className="flex items-center space-x-3 text-brand-teal py-2 animate-pulse"><Loader2 size={18} className="animate-spin" /><span>Consulting Gemini...</span></div> : <p className="text-gray-800 dark:text-gray-200 leading-relaxed text-sm">{geminiSummary}</p>}
-                            <div className="absolute top-0 right-0 p-4 opacity-5"><Sparkles size={120} className="text-brand-teal"/></div>
-                        </div>
-                    )}
-                    
                     <div className="flex items-center justify-between border-b dark:border-gray-700 pb-4 shrink-0">
                         <h3 className="text-xl font-bold text-gray-900 dark:text-white">{selectedRequest.requestSubject}</h3>
                         <span className={`px-2 py-1 rounded-full text-xs font-bold ${selectedRequest.status === RequestStatus.APPROVED ? 'bg-brand-teal/10 text-brand-teal' : 'bg-brand-orange/10 text-brand-orange'}`}>{selectedRequest.status}</span>

@@ -3,16 +3,16 @@
 Two independent deploys:
 
 - **Frontend** (this Vite app) goes to **Vercel** as a static site.
-- **Email and AI** run as **Supabase Edge Functions**, deployed with the
-  Supabase CLI. Vercel does not host these.
+- **Email** runs as a **Supabase Edge Function** (`notify`), deployed with the
+  Supabase CLI. Vercel does not host it.
 
-Do Part A first so email and AI work the moment the frontend is live. The app
-will still load without them, but approval emails and the AI summary will fail
-silently until the functions exist.
+Do Part A first so email works the moment the frontend is live. The app will
+still load without it, but approval emails will fail silently until the
+function exists.
 
 ---
 
-## Part A. Supabase Edge Functions
+## Part A. Supabase Edge Function (email)
 
 Prerequisites: the Supabase CLI (`npm i -g supabase`) and a Resend account with
 a verified sending domain.
@@ -29,17 +29,15 @@ a verified sending domain.
    ```bash
    supabase secrets set RESEND_API_KEY=re_xxxxx
    supabase secrets set RESEND_FROM="SendREQ <notifications@yourdomain>"
-   supabase secrets set GEMINI_API_KEY=xxxx
    ```
 
-3. Deploy both functions:
+3. Deploy the function:
 
    ```bash
    supabase functions deploy notify
-   supabase functions deploy summarize
    ```
 
-   **CHECKPOINT:** both appear under Edge Functions in the Supabase dashboard,
+   **CHECKPOINT:** it appears under Edge Functions in the Supabase dashboard,
    each showing a recent deploy. Test `notify`:
 
    ```bash
