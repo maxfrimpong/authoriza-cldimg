@@ -4,6 +4,7 @@ import { RequestStatus, PaymentRequest, RequestFile } from '../types';
 import { CheckCircle, XCircle, Sparkles, FileText, Download, X, Eye, Printer, PenTool, CreditCard, Info } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import { printPaymentRequest } from '../utils/pdfGenerator';
+import { computeRequestSummary } from '../utils/requestSummary';
 import { useSearchParams } from 'react-router-dom';
 
 export const ApproverDashboard = () => {
@@ -128,6 +129,11 @@ export const ApproverDashboard = () => {
                 </div>
             ) : (
                 <div className="flex-1 overflow-y-auto space-y-6 pr-2 custom-scrollbar">
+                    <div className="bg-gradient-to-br from-brand-teal/10 to-brand-dark/10 p-5 rounded-2xl border border-brand-teal/20 shadow-inner shrink-0">
+                        <div className="flex items-center space-x-2 text-brand-dark dark:text-brand-teal font-bold mb-2"><Info size={18} /><span>Request Summary</span></div>
+                        <p className="text-gray-800 dark:text-gray-200 leading-relaxed text-sm">{computeRequestSummary(selectedRequest)}</p>
+                    </div>
+
                     <div className="flex items-center justify-between border-b dark:border-gray-700 pb-4 shrink-0">
                         <h3 className="text-xl font-bold text-gray-900 dark:text-white">{selectedRequest.requestSubject}</h3>
                         <span className={`px-2 py-1 rounded-full text-xs font-bold ${selectedRequest.status === RequestStatus.APPROVED ? 'bg-brand-teal/10 text-brand-teal' : 'bg-brand-orange/10 text-brand-orange'}`}>{selectedRequest.status}</span>
