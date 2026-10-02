@@ -111,6 +111,7 @@ export interface SystemLists {
   departments: string[];
   positions: string[];
   roles: string[];
+  financeNotifyEmails?: string[]; // Recipients cc'd on final approval (fallback: Finance Manager)
   logoUrl?: string;
   copyrightText?: string;
   showDemoCredentials?: boolean;

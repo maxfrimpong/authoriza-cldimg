@@ -66,6 +66,7 @@ const DEFAULT_LISTS: SystemLists = {
   roles: [
     Role.ADMIN, Role.STAFF, Role.SUPERVISOR, Role.AUTHORIZER, Role.APPROVER, Role.AUDITOR
   ],
+  financeNotifyEmails: [],
   logoUrl: DEFAULT_LOGO,
   copyrightText: DEFAULT_COPYRIGHT,
   showDemoCredentials: true,
@@ -515,16 +516,34 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
             }
         }
 
-        // Final approval: also inform the supervisor and finance (informational copy).
+        // Final approval: also inform the supervisor and the configured finance
+        // recipient(s). Keyed by lowercased email so no one is emailed twice.
         if (status === RequestStatus.APPROVED) {
-            const extraRecipients = new Map<string, string>(); // email -> name
+            const extraRecipients = new Map<string, string>(); // lowercased email -> display name
+            const add = (email?: string, name?: string) => {
+                if (email) extraRecipients.set(email.toLowerCase(), name || 'Finance team');
+            };
+
             const supervisor = users.find(u => u.id === targetRequest.supervisorId);
-            if (supervisor?.email) extraRecipients.set(supervisor.email, supervisor.name);
-            users
-                .filter(u => (u.position || '').toLowerCase() === 'finance manager')
-                .forEach(u => { if (u.email) extraRecipients.set(u.email, u.name); });
+            add(supervisor?.email, supervisor?.name);
+
+            const configured = (systemLists.financeNotifyEmails || []).map(e => e.trim()).filter(Boolean);
+            if (configured.length > 0) {
+                // Admin-configured recipients (survives staff changes; can be a shared inbox).
+                configured.forEach(email => {
+                    const match = users.find(u => u.email?.toLowerCase() === email.toLowerCase());
+                    add(email, match?.name);
+                });
+            } else {
+                // Fallback when none configured: whoever currently holds Finance Manager.
+                users
+                    .filter(u => (u.position || '').toLowerCase() === 'finance manager')
+                    .forEach(u => add(u.email, u.name));
+            }
+
             // The requester already received their personal approval email.
-            if (requester?.email) extraRecipients.delete(requester.email);
+            if (requester?.email) extraRecipients.delete(requester.email.toLowerCase());
+
             for (const [email, name] of extraRecipients) {
                 const tpl = buildStageEmail({ status, audience: 'actor', recipientName: name, request: updatedRequest, appUrl: APP_URL });
                 if (tpl) apiSendEmail(email, tpl.subject, tpl.html);
@@ -609,6 +628,7 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
       const updatedLists = { ...systemLists, [listName]: newList };
       setSystemLists(updatedLists);
       safeSetItem('sendreq_system_lists_cache', JSON.stringify(updatedLists));
+      await apiUpdateSystemLists(updatedLists); // persist to Supabase (was previously local-only)
   };
 
   const toggleDemoCredentials = async (show: boolean) => {

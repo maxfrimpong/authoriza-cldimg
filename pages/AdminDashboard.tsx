@@ -721,6 +721,21 @@ export const AdminDashboard = () => {
                         <ListManager title="Momo Operators" items={systemLists.momoOperators} onUpdate={(newList) => updateSystemList('momoOperators', newList)} />
                     </div>
                </div>
+
+               <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-100">
+                    <h3 className="text-lg font-bold text-gray-900 mb-4 flex items-center gap-2">
+                        <Shield size={20} className="text-brand-teal" />
+                        Finance Notification Recipients
+                    </h3>
+                    <p className="text-sm text-gray-500 mb-4">
+                        Email addresses cc'd on every final-approval notification (alongside the requester and supervisor).
+                        Use a shared inbox such as finance@yotaweb.org so it survives staff changes.
+                        If left empty, the current Finance Manager is used.
+                    </p>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <ListManager title="Finance Emails" items={systemLists.financeNotifyEmails || []} onUpdate={(newList) => updateSystemList('financeNotifyEmails', newList)} />
+                    </div>
+               </div>
           </div>
       )}
 
