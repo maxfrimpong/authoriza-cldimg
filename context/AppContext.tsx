@@ -515,6 +515,22 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
             }
         }
 
+        // Final approval: also inform the supervisor and finance (informational copy).
+        if (status === RequestStatus.APPROVED) {
+            const extraRecipients = new Map<string, string>(); // email -> name
+            const supervisor = users.find(u => u.id === targetRequest.supervisorId);
+            if (supervisor?.email) extraRecipients.set(supervisor.email, supervisor.name);
+            users
+                .filter(u => u.department === 'Finance' || (u.position || '').toLowerCase().includes('finance'))
+                .forEach(u => { if (u.email) extraRecipients.set(u.email, u.name); });
+            // The requester already received their personal approval email.
+            if (requester?.email) extraRecipients.delete(requester.email);
+            for (const [email, name] of extraRecipients) {
+                const tpl = buildStageEmail({ status, audience: 'actor', recipientName: name, request: updatedRequest, appUrl: APP_URL });
+                if (tpl) apiSendEmail(email, tpl.subject, tpl.html);
+            }
+        }
+
     } catch (error) {
         console.error("Status update failed:", error);
     }

@@ -180,16 +180,8 @@ export function buildStageEmail(args: StageEmailArgs): EmailTemplate | null {
           }),
         };
       }
-      return {
-        subject: `Update: your request was confirmed (${request.vendorName})`,
-        html: shell({
-          ...base,
-          previewText: `Your request has moved to the authorisation stage.`,
-          heading: 'Your request moved forward',
-          intro: `Your payment request for ${v} has been confirmed by your supervisor and is now pending authorisation.`,
-          cta: { label: 'View status', url: appUrl },
-        }),
-      };
+      // Requester is not emailed on this intermediate hop (in-app only).
+      return null;
 
     case RequestStatus.AUTHORIZED:
       if (audience === 'actor') {
@@ -204,26 +196,30 @@ export function buildStageEmail(args: StageEmailArgs): EmailTemplate | null {
           }),
         };
       }
-      return {
-        subject: `Update: your request was authorised (${request.vendorName})`,
-        html: shell({
-          ...base,
-          previewText: `Your request has moved to the final approval stage.`,
-          heading: 'Your request moved forward',
-          intro: `Your payment request for ${v} has been authorised and is now awaiting final approval.`,
-          cta: { label: 'View status', url: appUrl },
-        }),
-      };
+      // Requester is not emailed on this intermediate hop (in-app only).
+      return null;
 
     case RequestStatus.APPROVED:
-      if (audience !== 'requester') return null;
+      if (audience === 'requester') {
+        return {
+          subject: `Approved: your payment request (${request.vendorName}, ${amt})`,
+          html: shell({
+            ...base,
+            previewText: `Your payment request has received final approval.`,
+            heading: 'Your request has been approved',
+            intro: `Good news. Your payment request for ${v} (${amt}) has received final approval and is cleared for processing.`,
+            cta: { label: 'View details', url: appUrl },
+          }),
+        };
+      }
+      // Informational copy for supervisor and finance.
       return {
-        subject: `Approved: your payment request (${request.vendorName}, ${amt})`,
+        subject: `Approved: payment request for ${request.vendorName} (${amt})`,
         html: shell({
           ...base,
-          previewText: `Your payment request has received final approval.`,
-          heading: 'Your request has been approved',
-          intro: `Good news. Your payment request for ${v} (${amt}) has received final approval and is cleared for processing.`,
+          previewText: `A payment request has received final approval.`,
+          heading: 'A request has been approved',
+          intro: `The payment request for ${v} (${amt}) raised by ${request.requesterName || 'a staff member'} has received final approval and is cleared for processing.`,
           cta: { label: 'View details', url: appUrl },
         }),
       };
