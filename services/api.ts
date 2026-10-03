@@ -6,7 +6,7 @@ import {
     SystemLists,
     Notification
 } from '../types';
-import { supabase, FUNCTIONS_URL, SUPABASE_ANON } from './supabaseClient';
+import { supabase } from './supabaseClient';
 import { MOCK_USERS, MOCK_REQUESTS, MOCK_MESSAGES, MOCK_SYSTEM_LISTS } from '../context/MockData';
 
 // Helper to safely parse JSON or return default
@@ -225,12 +225,13 @@ export const apiResetAllRequests = async (): Promise<boolean> => {
 
 export const apiSendEmail = async (to: string, subject: string, html: string) => {
     try {
-        await fetch(`${FUNCTIONS_URL}/notify`, {
+        const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+        const relaySecret = import.meta.env.VITE_EMAIL_RELAY_SECRET;
+        if (relaySecret) headers['x-relay-secret'] = relaySecret;
+
+        await fetch('/api/send-email', {
             method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${SUPABASE_ANON}`,
-            },
+            headers,
             body: JSON.stringify({ to, subject, html })
         });
     } catch (e) {

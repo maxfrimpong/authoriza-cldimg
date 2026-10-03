@@ -12,8 +12,8 @@ admin console for users and system lists.
 - **Frontend:** React 18 + TypeScript + Vite + Tailwind, React Router (hash),
   Recharts, `react-hot-toast`.
 - **Backend:** Supabase (Postgres + Realtime + Auth) accessed from the client.
-- **Serverless:** one Supabase Edge Function — `notify` (email via Resend).
-  The API key stays server-side.
+- **Serverless:** one Vercel serverless function — `api/send-email.ts` (email
+  via Resend). The Resend key stays in Vercel server-side env vars.
 - **Email templates:** `services/emailTemplates.ts` renders a branded email per
   approval stage; sent to the next actor and to the requester as a request moves.
 
@@ -45,15 +45,18 @@ Client (`.env.local`, exposed to the browser):
 | `VITE_SUPABASE_URL` | Supabase project URL |
 | `VITE_SUPABASE_ANON_KEY` | Supabase anon key (public by design) |
 
-Server (Supabase Function secrets — **never** in client env):
+Server (Vercel env vars — set in Project Settings, **not** `VITE_`-prefixed so
+they stay off the client):
 
-```bash
-supabase secrets set RESEND_API_KEY=re_xxxxx
-supabase secrets set RESEND_FROM="SendREQ <notifications@yourdomain>"  # verified domain in Resend
-```
+| Var | Purpose |
+| --- | --- |
+| `RESEND_API_KEY` | Resend API key (`re_...`) |
+| `RESEND_FROM` | sender, e.g. `SendREQ <notifications@yourdomain>` (verified domain) |
+| `EMAIL_RELAY_SECRET` | optional; if set, `/api/send-email` requires a matching `x-relay-secret` header |
 
 Email requires a domain verified in Resend (add the DNS records Resend gives
-you). `RESEND_FROM` must use that domain.
+you). `RESEND_FROM` must use that domain. If you set `EMAIL_RELAY_SECRET`, also
+set `VITE_EMAIL_RELAY_SECRET` to the same value so the frontend sends it.
 
 ## Database
 
@@ -61,11 +64,10 @@ you). `RESEND_FROM` must use that domain.
 code (the archive's original `.sql` files were corrupt). **Diff it against the
 live project before applying** — see the header of that file.
 
-## Edge Functions
+## Email function
 
-```bash
-supabase functions deploy notify
-```
+`api/send-email.ts` is a Vercel serverless function; it deploys automatically
+with the frontend on every push. No separate deploy step, no Supabase CLI.
 
 ## Deploy (frontend)
 

@@ -12,8 +12,3 @@ if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
 }
 
 export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-
-// Base URL for Supabase Edge Functions (email). Derived from the project URL
-// so there is a single source of truth.
-export const FUNCTIONS_URL = `${SUPABASE_URL.replace(/\/$/, '')}/functions/v1`;
-export const SUPABASE_ANON = SUPABASE_ANON_KEY;

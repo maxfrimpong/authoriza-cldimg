@@ -1,56 +1,55 @@
 # Deploying SendREQ
 
-Two independent deploys:
+Everything deploys to **Vercel** in one go: the Vite frontend plus the
+`api/send-email.ts` serverless function that sends email via Resend. There is
+no Supabase CLI and no separate function deploy. Supabase remains only the
+database.
 
-- **Frontend** (this Vite app) goes to **Vercel** as a static site.
-- **Email** runs as a **Supabase Edge Function** (`notify`), deployed with the
-  Supabase CLI. Vercel does not host it.
-
-Do Part A first so email works the moment the frontend is live. The app will
-still load without it, but approval emails will fail silently until the
-function exists.
+The app loads without email configured, but approval emails fail silently until
+you set the Resend env vars (Part A).
 
 ---
 
-## Part A. Supabase Edge Function (email)
+## Part A. Resend (email)
 
-Prerequisites: the Supabase CLI (`npm i -g supabase`) and a Resend account with
-a verified sending domain.
+Prerequisite: a Resend account with a verified sending domain.
 
-1. Link the CLI to your project (run once, from the repo root):
+1. At resend.com, add your sending domain and the DNS records it gives you.
+   Wait until it shows Verified. Without this, Resend only sends to your own
+   account email.
+2. Create an API key (starts with `re_`).
+3. In Vercel -> Project -> Settings -> Environment Variables, add (Production and
+   Preview), **without** a `VITE_` prefix so they stay server-side:
 
-   ```bash
-   supabase login
-   supabase link --project-ref mqmibsjedlkdwlgftdei
-   ```
+   | Name | Value |
+   | --- | --- |
+   | `RESEND_API_KEY` | `re_...` |
+   | `RESEND_FROM` | `SendREQ <notifications@yourdomain>` (verified domain) |
+   | `EMAIL_RELAY_SECRET` | optional; a long random string (see below) |
 
-2. Set the function secrets (server-side only, never in the frontend):
+4. Redeploy so the function picks up the vars (Deployments -> latest -> Redeploy,
+   or push a commit).
 
-   ```bash
-   supabase secrets set RESEND_API_KEY=re_xxxxx
-   supabase secrets set RESEND_FROM="SendREQ <notifications@yourdomain>"
-   ```
-
-3. Deploy the function:
-
-   ```bash
-   supabase functions deploy notify
-   ```
-
-   **CHECKPOINT:** it appears under Edge Functions in the Supabase dashboard,
-   each showing a recent deploy. Test `notify`:
+   **CHECKPOINT:** test the live function (replace the domain with your app's):
 
    ```bash
-   curl -i -X POST \
-     "https://mqmibsjedlkdwlgftdei.supabase.co/functions/v1/notify" \
-     -H "Authorization: Bearer <YOUR_ANON_KEY>" \
+   curl -i -X POST "https://YOUR-APP.vercel.app/api/send-email" \
      -H "Content-Type: application/json" \
      -d '{"to":"you@yourdomain","subject":"SendREQ test","html":"<b>It works</b>"}'
    ```
 
-   A `200` with `{"message":"Email sent"}` and an email in your inbox means it
-   is wired. A `500` means a secret is missing; `502` means Resend rejected it
-   (usually an unverified `RESEND_FROM` domain).
+   `200` with `{"message":"Email sent"}` and an email in your inbox means it is
+   wired. `500` means `RESEND_API_KEY`/`RESEND_FROM` are not set; `502` means
+   Resend rejected it (usually an unverified `RESEND_FROM` domain).
+
+### Optional: lock the relay
+
+`/api/send-email` is otherwise open to anyone who finds the URL, which could be
+abused to send mail from your domain. To add a barrier, set `EMAIL_RELAY_SECRET`
+(server, above) and `VITE_EMAIL_RELAY_SECRET` to the same value (client env, so
+the frontend sends it). This is a deterrent, not real authentication, since the
+client value ships in the bundle. Proper protection arrives with the Supabase
+Auth migration (verify the user's session JWT in the function).
 
 ---
 
@@ -119,8 +118,8 @@ redeploy so email links use the canonical address.
 1. Log in and raise a test request through to final approval.
 2. Confirm each stage email arrives: supervisor, authorizer, each ED, then the
    requester plus supervisor plus Finance Manager on approval.
-3. In the Supabase dashboard, open Edge Functions → `notify` → Logs to see each
-   send, and check Resend's dashboard for delivery status.
+3. In Vercel, open the project → the deployment → Functions → `api/send-email`
+   logs to see each send, and check Resend's dashboard for delivery status.
 
 ## Notes and limits
 
