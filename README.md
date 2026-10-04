@@ -52,11 +52,15 @@ they stay off the client):
 | --- | --- |
 | `RESEND_API_KEY` | Resend API key (`re_...`) |
 | `RESEND_FROM` | sender, e.g. `SendREQ <notifications@yourdomain>` (verified domain) |
-| `EMAIL_RELAY_SECRET` | optional; if set, `/api/send-email` requires a matching `x-relay-secret` header |
+| `EMAIL_RELAY_SECRET` | required; `/api/send-email` rejects calls without a matching `x-relay-secret` header |
+| `SUPABASE_URL` | `https://<project>.supabase.co` (for `/api/admin-user`) |
+| `SUPABASE_SERVICE_ROLE_KEY` | Supabase service role key; powers user create/edit/delete and password changes. **Secret, server-side only.** |
 
 Email requires a domain verified in Resend (add the DNS records Resend gives
-you). `RESEND_FROM` must use that domain. If you set `EMAIL_RELAY_SECRET`, also
-set `VITE_EMAIL_RELAY_SECRET` to the same value so the frontend sends it.
+you). `RESEND_FROM` must use that domain. `EMAIL_RELAY_SECRET` is required: set
+it here and set `VITE_EMAIL_RELAY_SECRET` (client) to the same value so the
+frontend is allowed to call the relay. The function refuses to send if either
+is missing.
 
 ## Database
 
@@ -64,10 +68,21 @@ set `VITE_EMAIL_RELAY_SECRET` to the same value so the frontend sends it.
 code (the archive's original `.sql` files were corrupt). **Diff it against the
 live project before applying** — see the header of that file.
 
-## Email function
+## Serverless functions
 
-`api/send-email.ts` is a Vercel serverless function; it deploys automatically
-with the frontend on every push. No separate deploy step, no Supabase CLI.
+Both deploy automatically with the frontend on every push (no Supabase CLI):
+
+- `api/send-email.ts` — email via Resend.
+- `api/admin-user.ts` — user create/edit/delete and password changes via the
+  Supabase service role. It verifies the caller's session: an ADMIN may manage
+  anyone; a normal user may edit only their own profile and password.
+
+## Authentication
+
+Login uses Supabase Auth (`signInWithPassword`); the session, not `localStorage`,
+is the source of truth. RLS restricts all data to signed-in users. Migrating an
+existing database from the old plaintext-password scheme is a staged cutover —
+see `supabase/migrations/0001_supabase_auth.md`.
 
 ## Deploy (frontend)
 

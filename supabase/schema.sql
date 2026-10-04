@@ -27,13 +27,15 @@ create table if not exists public.users (
   name                 text not null default '',
   email                text unique not null,
   phone_number         text,
-  password             text,              -- TEMPORARY: removed by auth migration
+  password             text,              -- TEMPORARY: dropped by the auth migration
   department           text default '',
   position             text default '',
   roles                jsonb not null default '[]'::jsonb,
   profile_picture_url  text,
+  auth_id              uuid,              -- links to auth.users.id (Supabase Auth)
   created_at           timestamptz not null default now()
 );
+create index if not exists users_auth_id_idx on public.users (auth_id);
 
 -- ---------------------------------------------------------------------------
 -- requests
@@ -119,11 +121,63 @@ alter publication supabase_realtime add table public.notifications;
 -- ============================================================================
 -- Row Level Security
 -- ============================================================================
--- INTENTIONALLY NOT ENABLED in this file.
+-- Single-tenant model: any signed-in (authenticated) user may use the app;
+-- the anon key alone can read nothing except public branding. User-table writes
+-- happen only through the service role (the /api/admin-user function), so the
+-- client has no write policy on public.users.
 --
--- The app currently reads and writes every table with the anon key and has no
--- server-side writes path. Turning on RLS now would break the running app.
--- Proper RLS (policies keyed on auth.uid()) is part of the Supabase Auth
--- migration — see supabase/migrations/0001_supabase_auth.md. Do that first,
--- then enable RLS.
+-- Apply this block only AFTER the app is deployed on Supabase Auth and every
+-- user has a linked auth account. See supabase/migrations/0001_supabase_auth.md
+-- for the ordered runbook.
+
+alter table public.users          enable row level security;
+alter table public.requests       enable row level security;
+alter table public.messages       enable row level security;
+alter table public.notifications  enable row level security;
+alter table public.system_config  enable row level security;
+
+-- users: readable by any signed-in user (the directory); no client writes.
+create policy "users_select_authenticated" on public.users
+  for select using (auth.role() = 'authenticated');
+
+-- requests: full workflow access for signed-in users.
+create policy "requests_select_authenticated" on public.requests
+  for select using (auth.role() = 'authenticated');
+create policy "requests_insert_authenticated" on public.requests
+  for insert with check (auth.role() = 'authenticated');
+create policy "requests_update_authenticated" on public.requests
+  for update using (auth.role() = 'authenticated');
+create policy "requests_delete_authenticated" on public.requests
+  for delete using (auth.role() = 'authenticated');
+
+-- messages: 1:1 chat between signed-in users.
+create policy "messages_select_authenticated" on public.messages
+  for select using (auth.role() = 'authenticated');
+create policy "messages_insert_authenticated" on public.messages
+  for insert with check (auth.role() = 'authenticated');
+create policy "messages_update_authenticated" on public.messages
+  for update using (auth.role() = 'authenticated');
+
+-- notifications.
+create policy "notifications_select_authenticated" on public.notifications
+  for select using (auth.role() = 'authenticated');
+create policy "notifications_insert_authenticated" on public.notifications
+  for insert with check (auth.role() = 'authenticated');
+create policy "notifications_update_authenticated" on public.notifications
+  for update using (auth.role() = 'authenticated');
+
+-- system_config: branding/lists. Readable by everyone (login screen needs it
+-- before sign-in); writable by signed-in users (admin UI). Tighten to an
+-- admin-only check once roles live in a claim.
+create policy "system_config_select_public" on public.system_config
+  for select using (true);
+create policy "system_config_write_authenticated" on public.system_config
+  for all using (auth.role() = 'authenticated') with check (auth.role() = 'authenticated');
+
+-- ============================================================================
+-- Note on refinement: these policies gate access to "signed in vs not". They do
+-- NOT yet enforce per-role rules (e.g. only an approver may approve) at the
+-- database level; that is still enforced in the app. Tightening to per-role,
+-- per-row policies is a later step and would key off a role claim or a
+-- security-definer helper that reads public.users.roles for auth.uid().
 -- ============================================================================

@@ -25,31 +25,44 @@ Prerequisite: a Resend account with a verified sending domain.
    | --- | --- |
    | `RESEND_API_KEY` | `re_...` |
    | `RESEND_FROM` | `SendREQ <notifications@yourdomain>` (verified domain) |
-   | `EMAIL_RELAY_SECRET` | optional; a long random string (see below) |
+   | `EMAIL_RELAY_SECRET` | required; a long random string (see "Relay guard" below) |
 
-4. Redeploy so the function picks up the vars (Deployments -> latest -> Redeploy,
-   or push a commit).
+4. Set the matching client value so the frontend is allowed to call the relay.
+   `VITE_EMAIL_RELAY_SECRET` must equal `EMAIL_RELAY_SECRET`. Set it in Vercel
+   env vars (it is build-time, so it is fine here) and in your local `.env.local`.
 
-   **CHECKPOINT:** test the live function (replace the domain with your app's):
+5. Redeploy so the function and build pick up the vars (Deployments -> latest ->
+   Redeploy, or push a commit).
+
+   **CHECKPOINT:** test the live function (replace the domain and secret):
 
    ```bash
    curl -i -X POST "https://YOUR-APP.vercel.app/api/send-email" \
      -H "Content-Type: application/json" \
+     -H "x-relay-secret: YOUR_EMAIL_RELAY_SECRET" \
      -d '{"to":"you@yourdomain","subject":"SendREQ test","html":"<b>It works</b>"}'
    ```
 
    `200` with `{"message":"Email sent"}` and an email in your inbox means it is
-   wired. `500` means `RESEND_API_KEY`/`RESEND_FROM` are not set; `502` means
-   Resend rejected it (usually an unverified `RESEND_FROM` domain).
+   wired. `401` means the `x-relay-secret` header is missing or wrong. `500`
+   means one of `RESEND_API_KEY` / `RESEND_FROM` / `EMAIL_RELAY_SECRET` is not
+   set; `502` means Resend rejected it (usually an unverified `RESEND_FROM`
+   domain).
 
-### Optional: lock the relay
+### The relay guard (required)
 
-`/api/send-email` is otherwise open to anyone who finds the URL, which could be
-abused to send mail from your domain. To add a barrier, set `EMAIL_RELAY_SECRET`
-(server, above) and `VITE_EMAIL_RELAY_SECRET` to the same value (client env, so
-the frontend sends it). This is a deterrent, not real authentication, since the
-client value ships in the bundle. Proper protection arrives with the Supabase
-Auth migration (verify the user's session JWT in the function).
+`/api/send-email` rejects any request without a matching `x-relay-secret`
+header, so a stranger who finds the URL cannot use it to send mail from your
+domain. Set `EMAIL_RELAY_SECRET` (server) and `VITE_EMAIL_RELAY_SECRET`
+(client) to the same long random value. Generate one with
+`node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"` or
+`openssl rand -hex 32`.
+
+This raises the bar but is not full authentication, because the client value
+ships in the bundle, so anyone who reads the deployed JavaScript can recover it.
+Real protection arrives with the Supabase Auth migration (verify the user's
+session JWT in the function). Rotate the secret by changing both env vars and
+redeploying.
 
 ---
 

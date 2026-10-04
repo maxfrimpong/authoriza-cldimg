@@ -1,133 +1,114 @@
-# Migration 0001 — Replace plaintext passwords with Supabase Auth
+# Migration 0001 — Supabase Auth + RLS (single-tenant hardening)
 
-**Status: PLAN. Not yet applied. Do not run against production without reading every step.**
+**Status: ready to run. Staged. Do it on a staging copy first, then production.**
 
-## Why
+This replaces plaintext-password login with Supabase Auth and turns on Row Level
+Security, so the anon key alone can no longer read your data. The app code for
+this is already in the repo; the steps below are the live-database side.
 
-Today `login()` runs `select * from users where email = ? and password = ?` from the
-browser under the anon key. That means:
+## Why the order matters
 
-- passwords are stored and compared in **plaintext**;
-- anyone with the anon key (it ships in the bundle) can read the whole `users`
-  table, passwords included, if RLS allows select;
-- there is no real session, just a user id in `localStorage`.
+If you enable RLS or drop the password column before the app is on Supabase Auth,
+logins break. The order below keeps the app working at every step.
 
-Supabase Auth fixes all three: bcrypt-hashed credentials in `auth.users`, a real
-JWT session, and RLS keyed on `auth.uid()`.
-
-## Risk
-
-This touches the **live** `users` table and every existing login. Run it in a
-**staging copy first**. Take a backup before touching production:
+## Phase 0 — Back up
 
 ```sql
-create table users_backup_0001 as table public.users;
-select count(*) from users_backup_0001;   -- CHECKPOINT: equals current user count
+create table if not exists users_backup_0001 as table public.users;
+select count(*) from users_backup_0001;   -- note this number
 ```
 
-## Step 1 — Create auth accounts for existing users
+## Phase 1 — Add the auth link column
 
-Supabase Auth stores identities in `auth.users`, which you cannot insert into
-directly with a password. Create accounts via the Admin API (service role), from
-a one-off script run locally — never from the browser:
+```sql
+alter table public.users add column if not exists auth_id uuid;
+create index if not exists users_auth_id_idx on public.users (auth_id);
+```
 
-```ts
-// scripts/migrate-auth.ts  (run with: deno run -A scripts/migrate-auth.ts)
-import { createClient } from 'npm:@supabase/supabase-js';
+This is harmless to the running app (old login still works).
 
-const admin = createClient(
-  Deno.env.get('SUPABASE_URL')!,
-  Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,   // service role, local only
-);
+## Phase 2 — Create auth accounts for existing users
 
-const { data: users } = await admin.from('users').select('id, email, password');
-for (const u of users ?? []) {
-  const { error } = await admin.auth.admin.createUser({
-    email: u.email,
-    password: u.password ?? crypto.randomUUID(), // if null, force a reset later
-    email_confirm: true,
-    user_metadata: { legacy_id: u.id },
-  });
-  console.log(u.email, error ? `FAILED: ${error.message}` : 'ok');
-}
+Run the script locally. It reads each user's current password and creates a
+matching Supabase Auth account, then links it via `auth_id`. Get the service
+role key from Supabase -> Project Settings -> API. Never commit it.
+
+```bash
+npm install
+SUPABASE_URL=https://mqmibsjedlkdwlgftdei.supabase.co \
+SUPABASE_SERVICE_ROLE_KEY=<service_role key> \
+node scripts/migrate-auth.mjs
 ```
 
 **CHECKPOINT:**
 
 ```sql
-select count(*) from auth.users;             -- equals users_backup_0001 count
-select email from public.users
-  where email not in (select email from auth.users);  -- must return 0 rows
-```
-
-## Step 2 — Link app rows to the auth id
-
-Add an `auth_id` column so the app's string ids keep working while RLS uses the
-auth uuid.
-
-```sql
-alter table public.users add column if not exists auth_id uuid;
-
-update public.users u
-set auth_id = a.id
-from auth.users a
-where a.email = u.email;
-
--- CHECKPOINT: every user linked
 select count(*) from public.users where auth_id is null;   -- must be 0
 ```
 
-## Step 3 — Switch the app to Supabase Auth
+Still harmless to the running app.
 
-In `context/AppContext.tsx` / `services/api.ts`:
+## Phase 3 — Deploy the app on Supabase Auth
 
-- `login()` → `supabase.auth.signInWithPassword({ email, password })`, then load
-  the matching `public.users` row by email.
-- Replace the `localStorage('sendreq_user_id')` session with
-  `supabase.auth.getSession()` / `onAuthStateChange`.
-- `logout()` → `supabase.auth.signOut()`.
-- `addUser()` → call a new `create-user` Edge Function (service role) that runs
-  `auth.admin.createUser`, instead of inserting a plaintext password.
+1. In Vercel env vars (server-side, NOT VITE_), add:
+   - `SUPABASE_URL` = `https://mqmibsjedlkdwlgftdei.supabase.co`
+   - `SUPABASE_SERVICE_ROLE_KEY` = the service role key
+   (these power `/api/admin-user`; the key stays server-side)
+2. Push the repo and let Vercel redeploy.
 
-**Do not drop the password column until Step 3 is deployed and verified**, or
-logins break.
+**CHECKPOINT:** log in with your existing email and password. Login now goes
+through Supabase Auth. Confirm the dashboards load and you can create or edit a
+user (which now runs through `/api/admin-user`). Data reads still work because
+RLS is not on yet.
 
-## Step 4 — Remove plaintext, enable RLS
+Do not continue until login works for a real account.
+
+## Phase 4 — Turn on RLS and remove plaintext passwords
+
+Run the RLS block from `supabase/schema.sql` (the section under "Row Level
+Security"), then drop the column:
 
 ```sql
+-- after the RLS policies from schema.sql have been applied:
 alter table public.users drop column password;
-
-alter table public.users         enable row level security;
-alter table public.requests      enable row level security;
-alter table public.messages      enable row level security;
-alter table public.notifications enable row level security;
-alter table public.system_config enable row level security;
-
--- Example starting policies (tighten per role afterwards):
-create policy "users read self + directory" on public.users
-  for select using (auth.role() = 'authenticated');
-
-create policy "requests readable by authenticated" on public.requests
-  for select using (auth.role() = 'authenticated');
--- writes should move to a server/Edge Function with the service role
--- (see engineering-principles: service-role writes-path).
 ```
 
-**CHECKPOINT after each enable:** log in as a normal user and confirm the
-dashboards still load. A policy that selects zero rows looks identical to "no
-data" — verify with a known row:
+**CHECKPOINT:** still logged in, reload the app. Requests, messages,
+notifications and the user directory must still load. A policy that returns zero
+rows looks the same as "no data", so verify against a row you know exists:
 
 ```sql
 select id, status from public.requests order by created_at desc limit 5;
 ```
 
+If a logged-in user now sees nothing, a policy is too strict; re-check the
+`authenticated` policies in `schema.sql`.
+
 ## Rollback
 
 ```sql
--- if Step 4 was applied and something is wrong:
-alter table public.users add column password text;
+-- re-open access if Phase 4 broke something:
+alter table public.users          disable row level security;
+alter table public.requests       disable row level security;
+alter table public.messages       disable row level security;
+alter table public.notifications  disable row level security;
+alter table public.system_config  disable row level security;
+
+-- if you also dropped the column and must revert the app to pre-Auth code:
+alter table public.users add column if not exists password text;
 update public.users u set password = b.password
   from users_backup_0001 b where b.id = u.id;
-alter table public.users disable row level security;
--- then revert the app code to the pre-migration commit.
 ```
+
+Then redeploy the previous commit. Note that rolling back after people have set
+new passwords through Supabase Auth will lose those new passwords (the backup
+holds the old ones).
+
+## After it is done
+
+- Remove `users_backup_0001` once you are confident:
+  `drop table users_backup_0001;`
+- New users created in the app get an auth account automatically via
+  `/api/admin-user`. There is no plaintext password anywhere.
+- RLS is "signed in vs not". Per-role database rules are a later refinement
+  (see the note at the end of `schema.sql`).

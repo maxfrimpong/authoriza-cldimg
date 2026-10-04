@@ -86,22 +86,33 @@ const mapNotification = (n: any): Notification => ({
     metadata: typeof n.metadata === 'object' ? n.metadata : safeParse(n.metadata, {})
 });
 
+// Load the profile row (from public.users) for the currently signed-in auth user,
+// matched by email. Returns null if there is no session or no matching row.
+export const apiGetCurrentProfile = async (): Promise<User | null> => {
+    const { data: { user: authUser } } = await supabase.auth.getUser();
+    if (!authUser?.email) return null;
+    const { data, error } = await supabase
+        .from('users')
+        .select('*')
+        .eq('email', authUser.email)
+        .maybeSingle();
+    if (error || !data) return null;
+    return mapUser(data);
+};
+
 export const apiLogin = async (email: string, password: string): Promise<User | null> => {
     try {
-        const { data, error } = await supabase
-            .from('users')
-            .select('*')
-            .eq('email', email)
-            .eq('password', password)
-            .limit(1)
-            .maybeSingle(); 
-        
-        if (error) throw error;
-        return data ? mapUser(data) : null;
+        const { error } = await supabase.auth.signInWithPassword({ email, password });
+        if (error) return null;
+        return apiGetCurrentProfile();
     } catch (err) {
         console.error("Login Failed:", err);
         return null;
     }
+};
+
+export const apiLogout = async (): Promise<void> => {
+    await supabase.auth.signOut();
 };
 
 export const apiGetUsers = async (): Promise<User[]> => {
@@ -115,39 +126,37 @@ export const apiGetUsers = async (): Promise<User[]> => {
     }
 };
 
-export const apiCreateUser = async (user: User): Promise<User> => {
-    await supabase.from('users').insert({
-        id: user.id,
-        name: user.name,
-        email: user.email,
-        phone_number: user.phoneNumber,
-        password: user.password,
-        department: user.department,
-        position: user.position,
-        roles: user.roles,
-        profile_picture_url: user.profilePictureUrl
+// User create/update/delete now run through the service-role /api/admin-user
+// function. Direct client writes to public.users are blocked by RLS. The caller's
+// session token is sent so the function can authorise the action.
+const callAdminUser = async (action: string, payload: Record<string, unknown>) => {
+    const { data: { session } } = await supabase.auth.getSession();
+    const res = await fetch('/api/admin-user', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${session?.access_token ?? ''}`,
+        },
+        body: JSON.stringify({ action, ...payload }),
     });
-    return user;
+    if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || `admin-user ${action} failed`);
+    }
+    return res.json();
 };
 
-export const apiUpdateUser = async (id: string, updates: Partial<User>): Promise<User> => {
-    const dbUpdates: any = {};
-    if (updates.name !== undefined) dbUpdates.name = updates.name;
-    if (updates.email !== undefined) dbUpdates.email = updates.email;
-    if (updates.phoneNumber !== undefined) dbUpdates.phone_number = updates.phoneNumber;
-    if (updates.department !== undefined) dbUpdates.department = updates.department;
-    if (updates.position !== undefined) dbUpdates.position = updates.position;
-    if (updates.roles !== undefined) dbUpdates.roles = updates.roles;
-    if (updates.profilePictureUrl !== undefined) dbUpdates.profile_picture_url = updates.profilePictureUrl;
-    if (updates.password !== undefined) dbUpdates.password = updates.password;
+export const apiCreateUser = async (user: User): Promise<User> => {
+    const res = await callAdminUser('create', { user });
+    return res.user ? mapUser(res.user) : user;
+};
 
-    const { data, error } = await supabase.from('users').update(dbUpdates).eq('id', id).select().single();
-    if (error) throw error;
-    return mapUser(data);
+export const apiUpdateUser = async (id: string, updates: Partial<User>): Promise<void> => {
+    await callAdminUser('update', { id, updates });
 };
 
 export const apiDeleteUser = async (id: string): Promise<void> => {
-    await supabase.from('users').delete().eq('id', id);
+    await callAdminUser('delete', { id });
 };
 
 export const apiGetRequests = async (): Promise<PaymentRequest[]> => {

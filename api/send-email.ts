@@ -5,8 +5,8 @@
 // Set in Vercel -> Project -> Settings -> Environment Variables (Production + Preview):
 //   RESEND_API_KEY        re_xxxxx
 //   RESEND_FROM           SendREQ <notifications@yourdomain>   (verified domain in Resend)
-//   EMAIL_RELAY_SECRET    optional; if set, callers must send a matching
-//                         x-relay-secret header (see note below)
+//   EMAIL_RELAY_SECRET    required; callers must send a matching x-relay-secret
+//                         header. The frontend sends VITE_EMAIL_RELAY_SECRET.
 //
 // Request body: { to: string, subject: string, html?: string, text?: string }
 
@@ -18,16 +18,17 @@ export default async function handler(req: any, res: any) {
 
   const apiKey = process.env.RESEND_API_KEY;
   const from = process.env.RESEND_FROM;
-  if (!apiKey || !from) {
-    res.status(500).json({ error: 'Email not configured (RESEND_API_KEY / RESEND_FROM missing)' });
+  const guard = process.env.EMAIL_RELAY_SECRET;
+  if (!apiKey || !from || !guard) {
+    res.status(500).json({ error: 'Email not configured (RESEND_API_KEY / RESEND_FROM / EMAIL_RELAY_SECRET missing)' });
     return;
   }
 
-  // Optional shared-secret barrier. This is a minor deterrent against a stranger
-  // using the relay, not real authentication (a browser-held secret is public).
-  // Real protection comes with the Supabase Auth migration (verify a session JWT).
-  const guard = process.env.EMAIL_RELAY_SECRET;
-  if (guard && req.headers['x-relay-secret'] !== guard) {
+  // Shared-secret barrier. Required. This raises the bar against a stranger
+  // using the relay, but is not real authentication (the client-side value
+  // ships in the bundle). Real protection comes with the Supabase Auth
+  // migration (verify the user's session JWT here).
+  if (req.headers['x-relay-secret'] !== guard) {
     res.status(401).json({ error: 'Unauthorized' });
     return;
   }

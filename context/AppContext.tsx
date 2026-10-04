@@ -1,9 +1,10 @@
 import React, { createContext, useContext, useState, ReactNode, useEffect, useRef } from 'react';
 import { User, PaymentRequest, RequestStatus, Role, AuthContextType, Notification as AppNotification, ChatMessage, SystemLists } from '../types';
-import { 
-    apiLogin, 
-    apiGetUsers, 
-    apiCreateUser, 
+import {
+    apiGetCurrentProfile,
+    apiLogout,
+    apiGetUsers,
+    apiCreateUser,
     apiUpdateUser, 
     apiDeleteUser,
     apiGetRequests,
@@ -130,6 +131,14 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const subscriptionRef = useRef<any | null>(null);
   const notifSubscriptionRef = useRef<any | null>(null);
+  const authSubRef = useRef<any | null>(null);
+  // Mirror of the signed-in user's id for use inside subscription callbacks
+  // (avoids stale closures without relying on localStorage).
+  const currentUserIdRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    currentUserIdRef.current = user?.id ?? null;
+  }, [user?.id]);
 
   useEffect(() => {
     if ('Notification' in window && window.Notification.permission === 'default') {
@@ -184,9 +193,6 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
   };
 
   const loadUserData = async () => {
-      const currentUserId = localStorage.getItem('sendreq_user_id');
-      if (!currentUserId) return;
-
       const fetchRequests = async () => {
           try {
               const reqs = await apiGetRequests();
@@ -219,98 +225,125 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
   };
 
   useEffect(() => {
+    let active = true;
+
+    const setupRealtime = (usersList: User[]) => {
+        if (subscriptionRef.current || notifSubscriptionRef.current) return;
+
+        subscriptionRef.current = apiSubscribeToMessages((payload) => {
+            setMessages(prev => {
+                const index = prev.findIndex(m => m.id === payload.id);
+                if (index !== -1) {
+                    const newArr = [...prev];
+                    newArr[index] = payload;
+                    return newArr;
+                }
+                if (payload.senderId !== currentUserIdRef.current) {
+                    playNotificationSound();
+                    const sender = usersList.find(u => u.id === payload.senderId);
+                    toast(`New message from ${sender ? sender.name : 'Teammate'}`);
+                }
+                return [...prev, payload];
+            });
+        });
+
+        notifSubscriptionRef.current = apiSubscribeToNotifications((payload) => {
+            setNotifications(prev => {
+                const index = prev.findIndex(n => n.id === payload.id);
+                if (index !== -1) {
+                    const newArr = [...prev];
+                    newArr[index] = payload;
+                    return newArr;
+                }
+                if (payload.userId === currentUserIdRef.current) {
+                    playNotificationSound();
+                    if (payload.type === 'success') toast.success(payload.message);
+                    else if (payload.type === 'error') toast.error(payload.message);
+                    else toast(payload.message, { icon: '🔔' });
+                }
+                return [payload, ...prev];
+            });
+        });
+    };
+
+    const teardownRealtime = () => {
+        if (subscriptionRef.current) { subscriptionRef.current.unsubscribe(); subscriptionRef.current = null; }
+        if (notifSubscriptionRef.current) { notifSubscriptionRef.current.unsubscribe(); notifSubscriptionRef.current = null; }
+    };
+
+    const loadForSession = async () => {
+        const profile = await apiGetCurrentProfile();
+        if (!active) return;
+        if (!profile) {
+            // Authenticated with Supabase but no matching profile row: sign out.
+            await apiLogout();
+            return;
+        }
+        setUser(profile);
+        currentUserIdRef.current = profile.id;
+        setActiveRole(prev => prev || (profile.roles.length > 0 ? profile.roles[0] : Role.STAFF));
+
+        const fetchedUsers = await apiGetUsers();
+        if (!active) return;
+        setUsers(fetchedUsers);
+        safeSetItem('sendreq_users_cache', JSON.stringify(fetchedUsers));
+
+        await loadUserData();
+        setupRealtime(fetchedUsers);
+    };
+
+    const clearSession = () => {
+        teardownRealtime();
+        setUser(null);
+        setActiveRole(null);
+        currentUserIdRef.current = null;
+        setRequests([]);
+        setMessages([]);
+        setNotifications([]);
+        localStorage.removeItem('sendreq_requests_cache');
+    };
+
     const initData = async () => {
         try {
             const storedDemoShow = localStorage.getItem('sendreq_show_demo');
             if (storedDemoShow !== null) setShowDemoCredentials(JSON.parse(storedDemoShow));
 
-            const storedUserId = localStorage.getItem('sendreq_user_id');
-            const cachedUsersStr = localStorage.getItem('sendreq_users_cache');
-            
-            if (storedUserId && cachedUsersStr) {
-                const cachedUsersArr = JSON.parse(cachedUsersStr);
-                const found = cachedUsersArr.find((u: any) => u.id === storedUserId);
-                if (found) {
-                    setUser(found);
-                    setActiveRole(found.roles[0]);
-                    loadUserData();
-                }
+            // System lists are public, so the login screen can show branding
+            // before anyone signs in.
+            const fetchedLists = await apiGetSystemLists(DEFAULT_LISTS);
+            if (active) {
+                setSystemLists(fetchedLists);
+                safeSetItem('sendreq_system_lists_cache', JSON.stringify(fetchedLists));
+                if (fetchedLists.logoUrl) setLogoUrl(fetchedLists.logoUrl);
+                if (fetchedLists.copyrightText) setCopyrightText(fetchedLists.copyrightText);
+                if (fetchedLists.showDemoCredentials !== undefined) setShowDemoCredentials(fetchedLists.showDemoCredentials);
             }
 
-            setIsLoading(false);
-
-            const [fetchedUsers, fetchedLists] = await Promise.all([
-                apiGetUsers(),
-                apiGetSystemLists(DEFAULT_LISTS)
-            ]);
-
-            setUsers(fetchedUsers);
-            safeSetItem('sendreq_users_cache', JSON.stringify(fetchedUsers));
-            
-            setSystemLists(fetchedLists);
-            safeSetItem('sendreq_system_lists_cache', JSON.stringify(fetchedLists));
-            
-            if (fetchedLists.logoUrl) setLogoUrl(fetchedLists.logoUrl);
-            if (fetchedLists.copyrightText) setCopyrightText(fetchedLists.copyrightText);
-            if (fetchedLists.showDemoCredentials !== undefined) setShowDemoCredentials(fetchedLists.showDemoCredentials);
-
-            if (storedUserId) {
-                const found = fetchedUsers.find(u => u.id === storedUserId);
-                if (found) {
-                    setUser(found);
-                    if (!activeRole && found.roles.length > 0) setActiveRole(found.roles[0]);
-                }
-            }
-
-            subscriptionRef.current = apiSubscribeToMessages((payload) => {
-                setMessages(prev => {
-                    const index = prev.findIndex(m => m.id === payload.id);
-                    if (index !== -1) {
-                        const newArr = [...prev];
-                        newArr[index] = payload;
-                        return newArr;
-                    } else {
-                        if (payload.senderId !== localStorage.getItem('sendreq_user_id')) {
-                            playNotificationSound();
-                            const sender = fetchedUsers.find(u => u.id === payload.senderId);
-                            toast(`New message from ${sender ? sender.name : 'Teammate'}`);
-                        }
-                        return [...prev, payload];
-                    }
-                });
-            });
-
-            notifSubscriptionRef.current = apiSubscribeToNotifications((payload) => {
-                 setNotifications(prev => {
-                     const index = prev.findIndex(n => n.id === payload.id);
-                     if (index !== -1) {
-                         const newArr = [...prev];
-                         newArr[index] = payload;
-                         return newArr;
-                     } else {
-                         const currentUserId = localStorage.getItem('sendreq_user_id');
-                         if (payload.userId === currentUserId) {
-                             playNotificationSound();
-                             if (payload.type === 'success') toast.success(payload.message);
-                             else if (payload.type === 'error') toast.error(payload.message);
-                             else toast(payload.message, { icon: '🔔' });
-                         }
-                         return [payload, ...prev];
-                     }
-                 });
-            });
-
+            const { data: { session } } = await supabase.auth.getSession();
+            if (session?.user) await loadForSession();
         } catch (error) {
             console.error("Initialization error:", error);
-            setIsLoading(false);
+        } finally {
+            if (active) setIsLoading(false);
         }
+
+        // React to sign-in / sign-out (this tab and others).
+        const { data } = supabase.auth.onAuthStateChange((event) => {
+            if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
+                if (!currentUserIdRef.current) loadForSession();
+            } else if (event === 'SIGNED_OUT') {
+                clearSession();
+            }
+        });
+        authSubRef.current = data.subscription;
     };
 
     initData();
 
     return () => {
-        if (subscriptionRef.current) subscriptionRef.current.unsubscribe();
-        if (notifSubscriptionRef.current) notifSubscriptionRef.current.unsubscribe();
+        active = false;
+        teardownRealtime();
+        if (authSubRef.current) authSubRef.current.unsubscribe();
     };
   }, []);
 
@@ -348,29 +381,23 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
 
   const login = async (email: string, password: string): Promise<boolean> => {
     try {
-        const foundUser = await apiLogin(email, password);
-        if (foundUser) {
-            setUser(foundUser);
-            setActiveRole(foundUser.roles.length > 0 ? foundUser.roles[0] : Role.STAFF);
-            localStorage.setItem('sendreq_user_id', foundUser.id);
-            loadUserData();
-            return true;
-        }
-        return false;
+        const { error } = await supabase.auth.signInWithPassword({ email, password });
+        if (error) return false;
+        // The onAuthStateChange listener loads the profile, directory, data and
+        // realtime subscriptions on SIGNED_IN.
+        return true;
     } catch (e) {
         console.error(e);
         return false;
     }
   };
 
-  const logout = () => {
+  const logout = async () => {
+    await apiLogout();
+    // The SIGNED_OUT listener clears state; clear identity here for immediacy.
     setUser(null);
     setActiveRole(null);
-    localStorage.removeItem('sendreq_user_id');
-    localStorage.removeItem('sendreq_requests_cache');
-    setRequests([]);
-    setMessages([]);
-    setNotifications([]);
+    currentUserIdRef.current = null;
   };
 
   const switchRole = (role: string) => {
@@ -557,18 +584,37 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
 
   const addUser = async (userData: Omit<User, 'id'>) => {
     const newUser: User = { ...userData, id: `u${Date.now()}` };
-    setUsers(prev => [...prev, newUser]);
-    await apiCreateUser(newUser);
+    try {
+        const created = await apiCreateUser(newUser);
+        setUsers(prev => [...prev, created]);
+    } catch (e: any) {
+        console.error("Create user failed:", e);
+        toast.error(e?.message || "Could not create user");
+    }
   };
 
   const editUser = async (id: string, userData: Partial<User>) => {
+    const previous = users;
     setUsers(prev => prev.map(u => u.id === id ? { ...u, ...userData } : u));
-    await apiUpdateUser(id, userData);
+    try {
+        await apiUpdateUser(id, userData);
+    } catch (e: any) {
+        console.error("Update user failed:", e);
+        toast.error(e?.message || "Could not update user");
+        setUsers(previous);
+    }
   };
 
   const deleteUser = async (id: string) => {
+    const previous = users;
     setUsers(prev => prev.filter(u => u.id !== id));
-    await apiDeleteUser(id);
+    try {
+        await apiDeleteUser(id);
+    } catch (e: any) {
+        console.error("Delete user failed:", e);
+        toast.error(e?.message || "Could not delete user");
+        setUsers(previous);
+    }
   };
 
   const markAsRead = async (id: string) => {
