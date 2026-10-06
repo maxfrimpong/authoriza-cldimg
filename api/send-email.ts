@@ -4,7 +4,7 @@
 //
 // Set in Vercel -> Project -> Settings -> Environment Variables (Production + Preview):
 //   RESEND_API_KEY        re_xxxxx
-//   RESEND_FROM           SendREQ <notifications@yourdomain>   (verified domain in Resend)
+//   RESEND_FROM           Authoriza <notifications@yourdomain>   (verified domain in Resend)
 //   EMAIL_RELAY_SECRET    required; callers must send a matching x-relay-secret
 //                         header. The frontend sends VITE_EMAIL_RELAY_SECRET.
 //

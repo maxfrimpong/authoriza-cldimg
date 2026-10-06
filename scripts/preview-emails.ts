@@ -18,7 +18,7 @@ const baseReq: PaymentRequest = {
   signOff: 'Ama Boateng', editCount: 0,
 };
 
-const appUrl = 'https://sendreq.yotaweb.org/#/';
+const appUrl = 'https://authoriza.yotaweb.org/#/';
 
 type Case = { label: string; args: StageEmailArgs };
 const cases: Case[] = [
@@ -51,7 +51,7 @@ const cards = cases.map((c) => {
 const page = `<!doctype html>
 <html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>SendREQ email templates preview</title>
+<title>Authoriza email templates preview</title>
 <style>
   body{margin:0;background:#eef1f4;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;color:#111827;}
   header{background:#006680;color:#fff;padding:20px 24px;}
@@ -66,7 +66,7 @@ const page = `<!doctype html>
   iframe{width:100%;height:760px;border:0;background:#f3f4f6;}
 </style></head>
 <body>
-  <header><h1>SendREQ email templates (Resend)</h1><p>One template per approval stage. Preview with sample data.</p></header>
+  <header><h1>Authoriza email templates (Resend)</h1><p>One template per approval stage. Preview with sample data.</p></header>
   <div class="grid">${cards}</div>
 </body></html>`;
 

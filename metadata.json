@@ -1,5 +1,5 @@
 {
-  "name": "SendREQ - Final - Cash Payment Requests App",
-  "description": "A streamlined cash payment request system with multi-level approval workflows and analytics.",
+  "name": "Authoriza",
+  "description": "Multi-level cash payment request and approval workflow, with signatures, notifications and analytics.",
   "requestFramePermissions": []
 }

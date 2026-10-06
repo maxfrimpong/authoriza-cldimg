@@ -1,5 +1,5 @@
 -- ============================================================================
--- SendREQ — canonical schema
+-- Authoriza — canonical schema
 -- VERIFIED against the live Supabase database on 2026-10-04 via
 -- information_schema introspection (columns, types, nullability, defaults,
 -- primary keys, unique and foreign-key constraints). RLS policies are those

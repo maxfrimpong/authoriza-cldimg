@@ -47,7 +47,7 @@ export const Login = () => {
       <div className="w-full flex-1 flex flex-col items-center justify-center">
           <div className="mb-8 text-center flex flex-col items-center">
             <h1 className="text-4xl font-bold text-white mb-2">
-                SendREQ
+                Authoriza
             </h1>
             <p className="text-brand-teal font-medium">YOTA Payment Request System</p>
           </div>

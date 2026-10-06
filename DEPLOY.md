@@ -1,4 +1,4 @@
-# Deploying SendREQ
+# Deploying Authoriza
 
 Everything deploys to **Vercel** in one go: the Vite frontend plus the
 `api/send-email.ts` serverless function that sends email via Resend. There is
@@ -24,7 +24,7 @@ Prerequisite: a Resend account with a verified sending domain.
    | Name | Value |
    | --- | --- |
    | `RESEND_API_KEY` | `re_...` |
-   | `RESEND_FROM` | `SendREQ <notifications@yourdomain>` (verified domain) |
+   | `RESEND_FROM` | `Authoriza <notifications@yourdomain>` (verified domain) |
    | `EMAIL_RELAY_SECRET` | required; a long random string (see "Relay guard" below) |
 
 4. Set the matching client value so the frontend is allowed to call the relay.
@@ -40,7 +40,7 @@ Prerequisite: a Resend account with a verified sending domain.
    curl -i -X POST "https://YOUR-APP.vercel.app/api/send-email" \
      -H "Content-Type: application/json" \
      -H "x-relay-secret: YOUR_EMAIL_RELAY_SECRET" \
-     -d '{"to":"you@yourdomain","subject":"SendREQ test","html":"<b>It works</b>"}'
+     -d '{"to":"you@yourdomain","subject":"Authoriza test","html":"<b>It works</b>"}'
    ```
 
    `200` with `{"message":"Email sent"}` and an email in your inbox means it is
@@ -104,7 +104,7 @@ These are read at **build time** and inlined. A build without them produces a
 shell that throws "Missing Supabase configuration" on load. If you add or
 change them later, you must trigger a redeploy for the change to take effect.
 
-`VITE_APP_URL` is optional. It only sets the "Open SendREQ" link in emails. If
+`VITE_APP_URL` is optional. It only sets the "Open Authoriza" link in emails. If
 omitted, the link falls back to whatever origin the app is served from, which
 is already correct. Set it only if you want a fixed canonical URL, for example
 once you attach a custom domain.

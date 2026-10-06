@@ -1,4 +1,4 @@
-# SendREQ
+# Authoriza
 
 Role-based payment-request and approval workflow, custom-built for **YOTA
 (Youth Opportunity and Transformation in Africa)**.
@@ -51,7 +51,7 @@ they stay off the client):
 | Var | Purpose |
 | --- | --- |
 | `RESEND_API_KEY` | Resend API key (`re_...`) |
-| `RESEND_FROM` | sender, e.g. `SendREQ <notifications@yourdomain>` (verified domain) |
+| `RESEND_FROM` | sender, e.g. `Authoriza <notifications@yourdomain>` (verified domain) |
 | `EMAIL_RELAY_SECRET` | required; `/api/send-email` rejects calls without a matching `x-relay-secret` header |
 | `SUPABASE_URL` | `https://<project>.supabase.co` (for `/api/admin-user`) |
 | `SUPABASE_SERVICE_ROLE_KEY` | Supabase service role key; powers user create/edit/delete and password changes. **Secret, server-side only.** |

@@ -126,7 +126,7 @@ export const Layout = ({ children }: { children?: React.ReactNode }) => {
              <img src={logoUrl} alt="Organization Logo" className="max-h-full max-w-full object-contain" />
           </div>
           <h1 className="text-xl font-bold text-white pl-1">
-            SendREQ
+            Authoriza
           </h1>
           <p className="text-brand-teal text-xs mt-1 pl-1">YOTA Payment Request System</p>
         </div>

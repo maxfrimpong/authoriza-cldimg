@@ -30,13 +30,13 @@ import toast from 'react-hot-toast';
 
 const AppContext = createContext<AuthContextType | undefined>(undefined);
 
-// Public URL used for the "Open SendREQ" buttons in emails. Falls back to the
+// Public URL used for the "Open Authoriza" buttons in emails. Falls back to the
 // running origin (hash router) so links work without extra configuration.
 const APP_URL: string =
   import.meta.env.VITE_APP_URL ||
   (typeof window !== 'undefined' ? `${window.location.origin}/#/` : '');
 
-const DEFAULT_COPYRIGHT = `&copy; ${new Date().getFullYear()} SendREQ. Custom developed for <span class="font-semibold">YOTA - Youth Opportunity and Transformation in Africa</span>.`;
+const DEFAULT_COPYRIGHT = `&copy; ${new Date().getFullYear()} Authoriza. Custom developed for <span class="font-semibold">YOTA - Youth Opportunity and Transformation in Africa</span>.`;
 
 const DEFAULT_LOGO = "data:image/svg+xml;base64,PHN2ZyB2aWV3Qm94PSIwIDAgMzgwIDgwIiB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciPgogIDxnIHRyYW5zZm9ybT0idHJhbnNsYXRlKDUsIDUpIHNjYWxlKDAuOSkiPgogICAgPHBhdGggZD0iTTI1IDE4IEMgMjIgMjAgMTkgMjMgMTggMjYgTCA1IDE5IEMgOCAxNCAxMiA5IDE3IDYgTCAyNSAxOCBaIiBmaWxsPSIjRkE0NTE1Ii8+CiAgICA8cGF0aCBkPSJNMzggMTMgQyAzNCAxNCAzMCAxNSAyNyAxOCBMIDIwIDYgQyAyNSAyIDMwIC0wIDM2IC0xIEwgMzggMTMgWiIgZmlsbD0iI0ZBNDUxNSIvPgogICAgPHBhdGggZD0iTTUxIDE1IEMgNDggMTMgNDUgMTIgNDEgMTIgViAtMiBDIDQ3IC0yIDUzIC0wIDU4IDIgTCA1IDE5IiBmaWxsPSIjRkZDNjU4Ii8+CiAgICA8cGF0aCBkPSJNNjMgMjIgQyA2MSAxOSA1OCAxNyA1NSAxNSBMIDYxIDIgQyA2NyA1IDcxIDkgNzUgMTQgTCA2MyAyMiBaIiBmaWxsPSIjRkZDNjU4Ii8+CiAgICA8cGF0aCBkPSJNNjggMzQgQyA2NyAzMCA2NiAyNyA2MyAyNCBMIDc1IDE2IEMgNzkgMjEgODIgMjYgODMgMzIgTCA2OCAzNCBaIiBmaWxsPSIjRkZDNjU4Ii8+CiAgICA8cGF0aCBkPSJNNTYgNDcgQyA2NyA0NCA2NyA0MCA2NiAzNiBMIDgxIDMzIEMgODIgMzkgODIgNDUgODEgNTEgTCA2NiA0NyBaIiBmaWxsPSIjMDBBODhGIi8+CiAgICA8cGF0aCBkPSJNNTcgNTggQyA1OSA1NSA2MSA1MSA2MSA0OCBMIDc2IDUwIEMgNzUgNTYgNzMgNjIgNjkgNjcgTCA1NyA1OCBaIiBmaWxsPSIjMDBBODhGIi8+CiAgICA8cGF0aCBkPSJNNDQgNjQgQyA0NyA2MyA1MCA2MSA1MiA1OCBMIDY0IDY2IEMgNjAgNzEgNTYgNzMgNTEgNzcgTCA0NCA2NCBaIiBmaWxsPSIjMDBBODhGIi8+CiAgICA8cGF0aCBkPSJNMzAgNjQgQyAzMyA2NSAzNyA2NSA0MCA2NCBMIDQ0IDc4IEMgMzggODAgMzMgODAgMjggNzggTCAzMCA2NCBaIiBmaWxsPSIjMDA2NjgwIi8+CiAgICA8cGF0aCBkPSJNMTkgNTggQyAyMiA2MCAyNSA2MSAyOCA2MiBMIDI1IDc3IEMgMTkgNzUgMTQgNzMgOSA2OSBMIDE5IDU4IFoiIGZpbGw9IiMwMDY2ODAiLz4KICAgIDxwYXRoID0iTTEzIDQ3IEMgMTQgNTAgMTYgNTMgMTggNTYgTCA5IDY3IEMgNSA2MyAyIDU5IDAgNTMgTCAxMyA0NyBaIiBmaWxsPSIjMDA2NjgwIi8+CiAgICA8cGF0aCBkPSJNMTMgMzY IEMgMTIgNDAgMTIgNDQgMTMgNDcgTCAtMSA1MCBDIC0yIDQ0IC0yIDM4IC0xIDMyIEwgMTMgMzYgWiIgZmlsbD0iIzAwNjY4MCIvPgogIDwvZz4KICA8dGV4dCB4PSIxMDAiIHk9IjU4IiBmb250LWZhbWlseT0ic2Fucy1zZXJpZiIgZm9udC13ZWlnaHQ9ImJvbGQiIGZvbnQtc2l6ZT0IjU2IiBmaWxsPSIjMDA2NjgwIj5ZT1RBPC90ZXh0PgogIDxsaW5lIHgxPSIyNjUiIHkxPSIxMCIgeDI9IjI2NSIgeTI9IjcwIiBzdHJva2U9IiMwMDY2ODAiIHN0cm9rZS13aWR0aD0iMiIvPgogIDxnIHRyYW5zZm9ybT0idHJhbnNsYXRlKDI4MCwgMjUpIj4KICAgICAgPHRleHQgeT0iMCIgZm9udC1mYW1pbHk9InNhbnMtc2VyaWYiIGZvbnQtc2l6ZT0iMTMiIGZpbGw9IiMwMDY2ODAiPllvdXRoIE9wcG9ydHVuaXR5PC90ZXh0PgogICAgICA8dGV4dCB5PSIxNiIgZm9udC1mYW1pbHk9InNhbnMtc2VyaWYiIGZvbnQtc2l6ZT0iMTMiIGZpbGw9IiMwMDY2ODAiPiZhbXA7IFRyYW5zZm9ybWF0aW9uPC90ZXh0PgogICAgICA8dGV4dCB5PSIzMiIgZm9udC1mYW1pbHk9InNhbnMtc2VyaWYiIGZvbnQtc2l6ZT0iMTMiIGZpbGw9IiMwMDY2ODAiPmluIEFmcmljYTwvdGV4dD4KICA8L2c+Cjwvc3ZnPg==";
 
@@ -704,7 +704,7 @@ export const AppProvider = ({ children }: { children?: ReactNode }) => {
       return (
           <div className="min-h-screen flex flex-col items-center justify-center bg-white dark:bg-gray-900 transition-colors">
               <div className="w-16 h-16 border-4 border-brand-teal/20 border-t-brand-teal rounded-full animate-spin mb-4"></div>
-              <p className="text-brand-dark dark:text-brand-teal font-medium animate-pulse">Initializing SendREQ...</p>
+              <p className="text-brand-dark dark:text-brand-teal font-medium animate-pulse">Initializing Authoriza...</p>
           </div>
       );
   }
