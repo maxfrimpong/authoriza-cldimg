@@ -1,6 +1,18 @@
 # Migration 0001 — Supabase Auth + RLS (single-tenant hardening)
 
-**Status: ready to run. Staged. Do it on a staging copy first, then production.**
+**Status: APPLIED to production on 2026-10-04.**
+
+Deviations encountered during the live run, for the record:
+- The live `users.password` column was `NOT NULL` (not captured by the original
+  reconstructed schema). It was made nullable so Auth-based user creation could
+  proceed, then dropped in Phase 4.
+- The live `users` table already had an unused `auth_uid` uuid column from an
+  earlier attempt. The migration added and uses `auth_id`; `auth_uid` was left
+  in place (see `schema.sql` follow-ups).
+- Existing users' Auth accounts were created by hand in the Supabase dashboard
+  (two users), not via `scripts/migrate-auth.mjs`. The script remains for scale.
+
+`schema.sql` was afterwards rebuilt to mirror the live database exactly.
 
 This replaces plaintext-password login with Supabase Auth and turns on Row Level
 Security, so the anon key alone can no longer read your data. The app code for
